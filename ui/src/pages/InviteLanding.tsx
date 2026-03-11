@@ -22,7 +22,13 @@ const adapterLabels: Record<string, string> = {
   http: "HTTP",
 };
 
-const ENABLED_INVITE_ADAPTERS = new Set(["claude_local", "codex_local", "opencode_local", "cursor"]);
+const ENABLED_INVITE_ADAPTERS = new Set([
+  "claude_local",
+  "codex_local",
+  "opencode_local",
+  "cursor",
+  "openclaw_gateway",
+]);
 
 function dateTime(value: string) {
   return new Date(value).toLocaleString();
@@ -45,6 +51,9 @@ export function InviteLandingPage() {
   const [agentName, setAgentName] = useState("");
   const [adapterType, setAdapterType] = useState<AgentAdapterType>("claude_local");
   const [capabilities, setCapabilities] = useState("");
+  const [gatewayUrl, setGatewayUrl] = useState("");
+  const [gatewayAuthToken, setGatewayAuthToken] = useState("");
+  const [paperclipApiUrl, setPaperclipApiUrl] = useState("");
   const [result, setResult] = useState<{ kind: "bootstrap" | "join"; payload: unknown } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -98,6 +107,18 @@ export function InviteLandingPage() {
         agentName: agentName.trim(),
         adapterType,
         capabilities: capabilities.trim() || null,
+        agentDefaultsPayload:
+          adapterType === "openclaw_gateway"
+            ? {
+                ...(gatewayUrl.trim() ? { url: gatewayUrl.trim() } : {}),
+                ...(paperclipApiUrl.trim()
+                  ? { paperclipApiUrl: paperclipApiUrl.trim() }
+                  : {}),
+                ...(gatewayAuthToken.trim()
+                  ? { headers: { "x-openclaw-token": gatewayAuthToken.trim() } }
+                  : {}),
+              }
+            : null,
       });
     },
     onSuccess: async (payload) => {
@@ -280,6 +301,37 @@ export function InviteLandingPage() {
                 onChange={(event) => setCapabilities(event.target.value)}
               />
             </label>
+            {adapterType === "openclaw_gateway" && (
+              <>
+                <label className="block text-sm">
+                  <span className="mb-1 block text-muted-foreground">Gateway URL</span>
+                  <input
+                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm font-mono"
+                    placeholder="ws://127.0.0.1:18789"
+                    value={gatewayUrl}
+                    onChange={(event) => setGatewayUrl(event.target.value)}
+                  />
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block text-muted-foreground">Gateway auth token</span>
+                  <input
+                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm font-mono"
+                    placeholder="x-openclaw-token"
+                    value={gatewayAuthToken}
+                    onChange={(event) => setGatewayAuthToken(event.target.value)}
+                  />
+                </label>
+                <label className="block text-sm">
+                  <span className="mb-1 block text-muted-foreground">Paperclip API URL (optional)</span>
+                  <input
+                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm font-mono"
+                    placeholder="http://host.docker.internal:3100"
+                    value={paperclipApiUrl}
+                    onChange={(event) => setPaperclipApiUrl(event.target.value)}
+                  />
+                </label>
+              </>
+            )}
           </div>
         )}
 
@@ -301,6 +353,10 @@ export function InviteLandingPage() {
           disabled={
             acceptMutation.isPending ||
             (joinType === "agent" && invite.inviteType !== "bootstrap_ceo" && agentName.trim().length === 0) ||
+            (joinType === "agent" &&
+              invite.inviteType !== "bootstrap_ceo" &&
+              adapterType === "openclaw_gateway" &&
+              (gatewayUrl.trim().length === 0 || gatewayAuthToken.trim().length === 0)) ||
             requiresAuthForHuman
           }
           onClick={() => acceptMutation.mutate()}

@@ -17,6 +17,8 @@ export const defaultCreateValues: CreateConfigValues = {
   envVars: "",
   envBindings: {},
   url: "",
+  gatewayAuthToken: "",
+  paperclipApiUrl: "",
   bootstrapPrompt: "",
   payloadTemplateJson: "",
   workspaceStrategyType: "project_primary",

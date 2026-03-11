@@ -84,6 +84,23 @@ interface ClaudeRuntimeConfig {
   extraArgs: string[];
 }
 
+function hasNonEmptyProcessEnv(name: string, env: NodeJS.ProcessEnv): boolean {
+  const value = env[name];
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+export function shouldUseDangerouslySkipPermissions(
+  enabled: boolean,
+  env: NodeJS.ProcessEnv = process.env,
+  uid: number | null = typeof process.getuid === "function" ? process.getuid() : null,
+): boolean {
+  if (!enabled) return false;
+  if (uid === 0) return false;
+  if (hasNonEmptyProcessEnv("SUDO_UID", env)) return false;
+  if (hasNonEmptyProcessEnv("SUDO_USER", env)) return false;
+  return true;
+}
+
 function buildLoginResult(input: {
   proc: RunProcessResult;
   loginUrl: string | null;
@@ -309,6 +326,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const chrome = asBoolean(config.chrome, false);
   const maxTurns = asNumber(config.maxTurnsPerRun, 0);
   const dangerouslySkipPermissions = asBoolean(config.dangerouslySkipPermissions, false);
+  const shouldSkipPermissions = shouldUseDangerouslySkipPermissions(dangerouslySkipPermissions);
   const instructionsFilePath = asString(config.instructionsFilePath, "").trim();
   const instructionsFileDir = instructionsFilePath ? `${path.dirname(instructionsFilePath)}/` : "";
   const commandNotes = instructionsFilePath
@@ -376,7 +394,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const buildClaudeArgs = (resumeSessionId: string | null) => {
     const args = ["--print", "-", "--output-format", "stream-json", "--verbose"];
     if (resumeSessionId) args.push("--resume", resumeSessionId);
-    if (dangerouslySkipPermissions) args.push("--dangerously-skip-permissions");
+    if (shouldSkipPermissions) args.push("--dangerously-skip-permissions");
     if (chrome) args.push("--chrome");
     if (model) args.push("--model", model);
     if (effort) args.push("--effort", effort);
@@ -533,6 +551,12 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   };
 
   try {
+    if (dangerouslySkipPermissions && !shouldSkipPermissions) {
+      await onLog(
+        "stderr",
+        "[paperclip] Ignoring Claude --dangerously-skip-permissions because this process is running with root/sudo privileges.\n",
+      );
+    }
     const initial = await runAttempt(sessionId ?? null);
     if (
       sessionId &&

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { isClaudeMaxTurnsResult } from "@paperclipai/adapter-claude-local/server";
+import {
+  isClaudeMaxTurnsResult,
+  shouldUseDangerouslySkipPermissions,
+} from "@paperclipai/adapter-claude-local/server";
 
 describe("claude_local max-turn detection", () => {
   it("detects max-turn exhaustion by subtype", () => {
@@ -26,5 +29,19 @@ describe("claude_local max-turn detection", () => {
         stop_reason: "end_turn",
       }),
     ).toBe(false);
+  });
+});
+
+describe("shouldUseDangerouslySkipPermissions", () => {
+  it("disables skip-permissions when running as root", () => {
+    expect(shouldUseDangerouslySkipPermissions(true, {}, 0)).toBe(false);
+  });
+
+  it("disables skip-permissions when running via sudo", () => {
+    expect(shouldUseDangerouslySkipPermissions(true, { SUDO_UID: "1000" }, 1000)).toBe(false);
+  });
+
+  it("preserves skip-permissions for non-privileged processes", () => {
+    expect(shouldUseDangerouslySkipPermissions(true, {}, 1000)).toBe(true);
   });
 });

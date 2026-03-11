@@ -15,6 +15,10 @@ function parseJsonObject(text: string): Record<string, unknown> | null {
 export function buildOpenClawGatewayConfig(v: CreateConfigValues): Record<string, unknown> {
   const ac: Record<string, unknown> = {};
   if (v.url) ac.url = v.url;
+  if (v.gatewayAuthToken) {
+    ac.headers = { "x-openclaw-token": v.gatewayAuthToken };
+  }
+  if (v.paperclipApiUrl) ac.paperclipApiUrl = v.paperclipApiUrl;
   ac.timeoutSec = 120;
   ac.waitTimeoutMs = 120000;
   ac.sessionKeyStrategy = "issue";

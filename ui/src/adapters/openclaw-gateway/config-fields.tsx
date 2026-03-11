@@ -116,6 +116,43 @@ export function OpenClawGatewayConfigFields({
         />
       </Field>
 
+      <SecretField
+        label="Gateway auth token (x-openclaw-token)"
+        value={
+          isCreate
+            ? values!.gatewayAuthToken ?? ""
+            : effectiveGatewayToken
+        }
+        onCommit={(v) =>
+          isCreate
+            ? set!({ gatewayAuthToken: v })
+            : commitGatewayToken(v)
+        }
+        placeholder="OpenClaw gateway token"
+      />
+
+      <Field label="Paperclip API URL override">
+        <DraftInput
+          value={
+            isCreate
+              ? values!.paperclipApiUrl ?? ""
+              : eff(
+                  "adapterConfig",
+                  "paperclipApiUrl",
+                  String(config.paperclipApiUrl ?? ""),
+                )
+          }
+          onCommit={(v) =>
+            isCreate
+              ? set!({ paperclipApiUrl: v })
+              : mark("adapterConfig", "paperclipApiUrl", v || undefined)
+          }
+          immediate
+          className={inputClass}
+          placeholder="https://paperclip.example"
+        />
+      </Field>
+
       <PayloadTemplateJsonField
         isCreate={isCreate}
         values={values}
@@ -134,22 +171,6 @@ export function OpenClawGatewayConfigFields({
 
       {!isCreate && (
         <>
-          <Field label="Paperclip API URL override">
-            <DraftInput
-              value={
-                eff(
-                  "adapterConfig",
-                  "paperclipApiUrl",
-                  String(config.paperclipApiUrl ?? ""),
-                )
-              }
-              onCommit={(v) => mark("adapterConfig", "paperclipApiUrl", v || undefined)}
-              immediate
-              className={inputClass}
-              placeholder="https://paperclip.example"
-            />
-          </Field>
-
           <Field label="Session strategy">
             <select
               value={sessionStrategy}
@@ -173,13 +194,6 @@ export function OpenClawGatewayConfigFields({
               />
             </Field>
           )}
-
-          <SecretField
-            label="Gateway auth token (x-openclaw-token)"
-            value={effectiveGatewayToken}
-            onCommit={commitGatewayToken}
-            placeholder="OpenClaw gateway token"
-          />
 
           <Field label="Role">
             <DraftInput

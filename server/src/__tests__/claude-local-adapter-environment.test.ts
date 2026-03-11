@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -87,5 +87,26 @@ describe("claude_local environment diagnostics", () => {
     const stats = await fs.stat(cwd);
     expect(stats.isDirectory()).toBe(true);
     await fs.rm(path.dirname(cwd), { recursive: true, force: true });
+  });
+
+  it("warns when skip-permissions is enabled under root", async () => {
+    const getuidSpy = vi.spyOn(process, "getuid").mockReturnValue(0);
+
+    try {
+      const result = await testEnvironment({
+        companyId: "company-1",
+        adapterType: "claude_local",
+        config: {
+          command: process.execPath,
+          cwd: process.cwd(),
+          dangerouslySkipPermissions: true,
+        },
+      });
+
+      expect(result.checks.some((check) => check.code === "claude_skip_permissions_ignored_when_privileged")).toBe(true);
+      expect(result.checks.some((check) => check.level === "error")).toBe(false);
+    } finally {
+      getuidSpy.mockRestore();
+    }
   });
 });

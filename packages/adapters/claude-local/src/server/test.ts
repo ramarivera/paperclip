@@ -16,6 +16,7 @@ import {
 } from "@paperclipai/adapter-utils/server-utils";
 import path from "node:path";
 import { detectClaudeLoginRequired, parseClaudeStreamJson } from "./parse.js";
+import { shouldUseDangerouslySkipPermissions } from "./execute.js";
 
 function summarizeStatus(checks: AdapterEnvironmentCheck[]): AdapterEnvironmentTestResult["status"] {
   if (checks.some((check) => check.level === "error")) return "fail";
@@ -118,6 +119,18 @@ export async function testEnvironment(
   const canRunProbe =
     checks.every((check) => check.code !== "claude_cwd_invalid" && check.code !== "claude_command_unresolvable");
   if (canRunProbe) {
+    const dangerouslySkipPermissions = asBoolean(config.dangerouslySkipPermissions, false);
+    const shouldSkipPermissions = shouldUseDangerouslySkipPermissions(dangerouslySkipPermissions);
+    if (dangerouslySkipPermissions && !shouldSkipPermissions) {
+      checks.push({
+        code: "claude_skip_permissions_ignored_when_privileged",
+        level: "warn",
+        message:
+          "Claude skip-permissions mode is incompatible with root/sudo execution and will be ignored.",
+        hint: "Run Paperclip as a non-root user if you need unattended Claude permission bypass.",
+      });
+    }
+
     if (!commandLooksLike(command, "claude")) {
       checks.push({
         code: "claude_hello_probe_skipped_custom_command",
@@ -131,7 +144,6 @@ export async function testEnvironment(
       const effort = asString(config.effort, "").trim();
       const chrome = asBoolean(config.chrome, false);
       const maxTurns = asNumber(config.maxTurnsPerRun, 0);
-      const dangerouslySkipPermissions = asBoolean(config.dangerouslySkipPermissions, false);
       const extraArgs = (() => {
         const fromExtraArgs = asStringArray(config.extraArgs);
         if (fromExtraArgs.length > 0) return fromExtraArgs;
@@ -139,7 +151,7 @@ export async function testEnvironment(
       })();
 
       const args = ["--print", "-", "--output-format", "stream-json", "--verbose"];
-      if (dangerouslySkipPermissions) args.push("--dangerously-skip-permissions");
+      if (shouldSkipPermissions) args.push("--dangerously-skip-permissions");
       if (chrome) args.push("--chrome");
       if (model) args.push("--model", model);
       if (effort) args.push("--effort", effort);

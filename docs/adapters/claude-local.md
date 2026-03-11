@@ -21,7 +21,7 @@ The `claude_local` adapter runs Anthropic's Claude Code CLI locally. It supports
 | `timeoutSec` | number | No | Process timeout (0 = no timeout) |
 | `graceSec` | number | No | Grace period before force-kill |
 | `maxTurnsPerRun` | number | No | Max agentic turns per heartbeat |
-| `dangerouslySkipPermissions` | boolean | No | Skip permission prompts (dev only) |
+| `dangerouslySkipPermissions` | boolean | No | Skip permission prompts (dev only). Paperclip ignores this when the server runs as root or via sudo because Claude rejects that flag in privileged contexts. |
 
 ## Prompt Templates
 
@@ -62,4 +62,5 @@ Use the "Test Environment" button in the UI to validate the adapter config. It c
 - Claude CLI is installed and accessible
 - Working directory is absolute and available (auto-created if missing and permitted)
 - API key/auth mode hints (`ANTHROPIC_API_KEY` vs subscription login)
+- Privileged runtime warning when `dangerouslySkipPermissions` is enabled under root/sudo
 - A live hello probe (`claude --print - --output-format stream-json --verbose` with prompt `Respond with hello.`) to verify CLI readiness

@@ -165,6 +165,16 @@ export function NewAgent() {
         return;
       }
     }
+    if (configValues.adapterType === "openclaw_gateway") {
+      if (!configValues.url.trim()) {
+        setFormError("OpenClaw Gateway requires a gateway URL.");
+        return;
+      }
+      if (!configValues.gatewayAuthToken?.trim()) {
+        setFormError("OpenClaw Gateway requires a gateway auth token.");
+        return;
+      }
+    }
     createAgent.mutate({
       name: name.trim(),
       role: effectiveRole,
