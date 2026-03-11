@@ -1,16 +1,16 @@
+import type { Company } from "@paperclipai/shared";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createContext,
+  type ReactNode,
   useCallback,
   useContext,
   useEffect,
   useMemo,
   useState,
-  type ReactNode,
 } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import type { Company } from "@paperclipai/shared";
-import { companiesApi } from "../api/companies";
 import { ApiError } from "../api/client";
+import { companiesApi } from "../api/companies";
 import { queryKeys } from "../lib/queryKeys";
 
 type CompanySelectionSource = "manual" | "route_sync" | "bootstrap";
@@ -23,7 +23,10 @@ interface CompanyContextValue {
   selectionSource: CompanySelectionSource;
   loading: boolean;
   error: Error | null;
-  setSelectedCompanyId: (companyId: string, options?: CompanySelectionOptions) => void;
+  setSelectedCompanyId: (
+    companyId: string,
+    options?: CompanySelectionOptions
+  ) => void;
   reloadCompanies: () => Promise<void>;
   createCompany: (data: {
     name: string;
@@ -36,12 +39,35 @@ const STORAGE_KEY = "paperclip.selectedCompanyId";
 
 const CompanyContext = createContext<CompanyContextValue | null>(null);
 
+function safeGetStoredCompanyId(): string | null {
+  try {
+    return localStorage.getItem(STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function safeSetStoredCompanyId(companyId: string) {
+  try {
+    localStorage.setItem(STORAGE_KEY, companyId);
+  } catch {
+    // Ignore storage failures in restricted browser contexts.
+  }
+}
+
 export function CompanyProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
-  const [selectionSource, setSelectionSource] = useState<CompanySelectionSource>("bootstrap");
-  const [selectedCompanyId, setSelectedCompanyIdState] = useState<string | null>(() => localStorage.getItem(STORAGE_KEY));
+  const [selectionSource, setSelectionSource] =
+    useState<CompanySelectionSource>("bootstrap");
+  const [selectedCompanyId, setSelectedCompanyIdState] = useState<
+    string | null
+  >(() => safeGetStoredCompanyId());
 
-  const { data: companies = [], isLoading, error } = useQuery({
+  const {
+    data: companies = [],
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: queryKeys.companies.all,
     queryFn: async () => {
       try {
@@ -57,37 +83,48 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
   });
   const sidebarCompanies = useMemo(
     () => companies.filter((company) => company.status !== "archived"),
-    [companies],
+    [companies]
   );
 
   // Auto-select first company when list loads
   useEffect(() => {
     if (companies.length === 0) return;
 
-    const selectableCompanies = sidebarCompanies.length > 0 ? sidebarCompanies : companies;
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const selectableCompanies =
+      sidebarCompanies.length > 0 ? sidebarCompanies : companies;
+    const stored = safeGetStoredCompanyId();
     if (stored && selectableCompanies.some((c) => c.id === stored)) return;
-    if (selectedCompanyId && selectableCompanies.some((c) => c.id === selectedCompanyId)) return;
+    if (
+      selectedCompanyId &&
+      selectableCompanies.some((c) => c.id === selectedCompanyId)
+    )
+      return;
 
     const next = selectableCompanies[0]!.id;
     setSelectedCompanyIdState(next);
     setSelectionSource("bootstrap");
-    localStorage.setItem(STORAGE_KEY, next);
+    safeSetStoredCompanyId(next);
   }, [companies, selectedCompanyId, sidebarCompanies]);
 
-  const setSelectedCompanyId = useCallback((companyId: string, options?: CompanySelectionOptions) => {
-    setSelectedCompanyIdState(companyId);
-    setSelectionSource(options?.source ?? "manual");
-    localStorage.setItem(STORAGE_KEY, companyId);
-  }, []);
+  const setSelectedCompanyId = useCallback(
+    (companyId: string, options?: CompanySelectionOptions) => {
+      setSelectedCompanyIdState(companyId);
+      setSelectionSource(options?.source ?? "manual");
+      safeSetStoredCompanyId(companyId);
+    },
+    []
+  );
 
   const reloadCompanies = useCallback(async () => {
     await queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
   }, [queryClient]);
 
   const createMutation = useMutation({
-    mutationFn: (data: { name: string; description?: string | null; budgetMonthlyCents?: number }) =>
-      companiesApi.create(data),
+    mutationFn: (data: {
+      name: string;
+      description?: string | null;
+      budgetMonthlyCents?: number;
+    }) => companiesApi.create(data),
     onSuccess: (company) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
       setSelectedCompanyId(company.id);
@@ -95,15 +132,19 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
   });
 
   const createCompany = useCallback(
-    async (data: { name: string; description?: string | null; budgetMonthlyCents?: number }) => {
+    async (data: {
+      name: string;
+      description?: string | null;
+      budgetMonthlyCents?: number;
+    }) => {
       return createMutation.mutateAsync(data);
     },
-    [createMutation],
+    [createMutation]
   );
 
   const selectedCompany = useMemo(
     () => companies.find((company) => company.id === selectedCompanyId) ?? null,
-    [companies, selectedCompanyId],
+    [companies, selectedCompanyId]
   );
 
   const value = useMemo(
@@ -128,10 +169,12 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
       setSelectedCompanyId,
       reloadCompanies,
       createCompany,
-    ],
+    ]
   );
 
-  return <CompanyContext.Provider value={value}>{children}</CompanyContext.Provider>;
+  return (
+    <CompanyContext.Provider value={value}>{children}</CompanyContext.Provider>
+  );
 }
 
 export function useCompany() {
