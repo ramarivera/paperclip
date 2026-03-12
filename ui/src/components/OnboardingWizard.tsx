@@ -45,7 +45,10 @@ import {
   extractModelName,
   extractProviderIdWithFallback,
 } from "../lib/model-utils";
-import { getOnboardingDefaultCommand } from "../lib/onboarding-defaults";
+import {
+  getOnboardingDefaultCommand,
+  resolveOnboardingAdapterCommand,
+} from "../lib/onboarding-defaults";
 import { queryKeys } from "../lib/queryKeys";
 import { cn } from "../lib/utils";
 import { AsciiArtAnimation } from "./AsciiArtAnimation";
@@ -191,9 +194,11 @@ export function OnboardingWizard() {
     adapterType === "opencode_local" ||
     adapterType === "cursor";
   const onboardingDefaults = health?.onboardingDefaults ?? null;
-  const effectiveAdapterCommand =
-    command.trim() ||
-    getOnboardingDefaultCommand(adapterType, onboardingDefaults);
+  const effectiveAdapterCommand = resolveOnboardingAdapterCommand(
+    adapterType,
+    command,
+    onboardingDefaults
+  );
 
   useEffect(() => {
     const previousAdapterType = previousAdapterTypeRef.current;
@@ -331,7 +336,7 @@ export function OnboardingWizard() {
             : adapterType === "cursor"
               ? model || DEFAULT_CURSOR_LOCAL_MODEL
               : model,
-      command,
+      command: effectiveAdapterCommand,
       args,
       url,
       gatewayAuthToken,

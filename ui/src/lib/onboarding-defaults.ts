@@ -1,6 +1,7 @@
 export type OnboardingAdapterType =
   | "claude_local"
   | "codex_local"
+  | "gemini_local"
   | "opencode_local"
   | "pi_local"
   | "cursor"
@@ -14,7 +15,7 @@ export type OnboardingDefaults = {
 
 export function getOnboardingDefaultCommand(
   adapterType: OnboardingAdapterType,
-  defaults?: OnboardingDefaults | null,
+  defaults?: OnboardingDefaults | null
 ): string {
   if (adapterType === "claude_local") {
     const configured = defaults?.ceoClaudeCommand?.trim();
@@ -22,7 +23,17 @@ export function getOnboardingDefaultCommand(
   }
 
   if (adapterType === "codex_local") return "codex";
+  if (adapterType === "gemini_local") return "gemini";
   if (adapterType === "cursor") return "agent";
   if (adapterType === "opencode_local") return "opencode";
   return "";
+}
+
+export function resolveOnboardingAdapterCommand(
+  adapterType: OnboardingAdapterType,
+  command: string,
+  defaults?: OnboardingDefaults | null
+): string {
+  const trimmed = command.trim();
+  return trimmed || getOnboardingDefaultCommand(adapterType, defaults);
 }

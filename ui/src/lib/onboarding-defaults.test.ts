@@ -1,6 +1,9 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { getOnboardingDefaultCommand } from "./onboarding-defaults";
+import {
+  getOnboardingDefaultCommand,
+  resolveOnboardingAdapterCommand,
+} from "./onboarding-defaults";
 
 describe("getOnboardingDefaultCommand", () => {
   it("defaults Claude onboarding to the raw claude command", () => {
@@ -11,7 +14,7 @@ describe("getOnboardingDefaultCommand", () => {
     expect(
       getOnboardingDefaultCommand("claude_local", {
         ceoClaudeCommand: "paperclip-claude",
-      }),
+      })
     ).toBe("paperclip-claude");
   });
 
@@ -19,7 +22,23 @@ describe("getOnboardingDefaultCommand", () => {
     expect(
       getOnboardingDefaultCommand("codex_local", {
         ceoClaudeCommand: "paperclip-claude",
-      }),
+      })
     ).toBe("codex");
+  });
+
+  it("prefers the computed onboarding command when the raw command is empty", () => {
+    expect(
+      resolveOnboardingAdapterCommand("claude_local", "", {
+        ceoClaudeCommand: "paperclip-claude",
+      })
+    ).toBe("paperclip-claude");
+  });
+
+  it("preserves an explicit user-entered command", () => {
+    expect(
+      resolveOnboardingAdapterCommand("claude_local", "claude-custom", {
+        ceoClaudeCommand: "paperclip-claude",
+      })
+    ).toBe("claude-custom");
   });
 });
