@@ -75,6 +75,15 @@ type CompanyInviteCreated = {
   inviteMessage?: string | null;
 };
 
+type BootstrapCeoInviteCreated = {
+  id: string;
+  token: string;
+  inviteType: "bootstrap_ceo";
+  allowedJoinTypes: "human";
+  expiresAt: string;
+  inviteUrl: string;
+};
+
 export const accessApi = {
   createCompanyInvite: (
     companyId: string,
@@ -96,6 +105,9 @@ export const accessApi = {
       `/companies/${companyId}/openclaw/invite-prompt`,
       input,
     ),
+
+  createBootstrapCeoInvite: () =>
+    api.post<BootstrapCeoInviteCreated>("/bootstrap-ceo/invite", {}),
 
   getInvite: (token: string) => api.get<InviteSummary>(`/invites/${token}`),
   getInviteOnboarding: (token: string) =>

@@ -1,10 +1,12 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { Navigate, Outlet, Route, Routes, useLocation } from "@/lib/router";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Layout } from "./components/Layout";
+import { CopyText } from "./components/CopyText";
 import { OnboardingWizard } from "./components/OnboardingWizard";
 import { authApi } from "./api/auth";
+import { accessApi } from "./api/access";
 import { healthApi } from "./api/health";
 import { Dashboard } from "./pages/Dashboard";
 import { Companies } from "./pages/Companies";
@@ -36,16 +38,79 @@ import { useDialog } from "./context/DialogContext";
 import { loadLastInboxTab } from "./lib/inbox";
 
 function BootstrapPendingPage({ hasActiveInvite = false }: { hasActiveInvite?: boolean }) {
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+  const [errorText, setErrorText] = useState<string | null>(null);
+  const hasInvite = hasActiveInvite || Boolean(inviteUrl);
+
+  const bootstrapInviteMutation = useMutation({
+    mutationFn: () => accessApi.createBootstrapCeoInvite(),
+    onSuccess: (payload) => {
+      setInviteUrl(payload.inviteUrl);
+      setErrorText(null);
+    },
+    onError: (error) => {
+      if (error instanceof Error) {
+        setErrorText(error.message);
+        return;
+      }
+      setErrorText("Failed to create bootstrap invite.");
+    },
+  });
+
+  const displayInviteUrl = useMemo(
+    () =>
+      inviteUrl
+        ? /^https?:\/\//.test(inviteUrl)
+          ? inviteUrl
+          : `${window.location.origin}${inviteUrl}`
+        : null,
+    [inviteUrl],
+  );
+
+  const buttonLabel = bootstrapInviteMutation.isPending
+    ? "Generating invite..."
+    : hasInvite
+      ? "Rotate bootstrap invite"
+      : "Generate bootstrap invite";
+
   return (
     <div className="mx-auto max-w-xl py-10">
       <div className="rounded-lg border border-border bg-card p-6">
         <h1 className="text-xl font-semibold">Instance setup required</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          {hasActiveInvite
-            ? "No instance admin exists yet. A bootstrap invite is already active. Check your Paperclip startup logs for the first admin invite URL, or run this command to rotate it:"
-            : "No instance admin exists yet. Run this command in your Paperclip environment to generate the first admin invite URL:"}
+          {hasInvite
+            ? "No instance admin exists yet. A bootstrap invite is already active. Use the button below to rotate it:"
+            : "No instance admin exists yet. Generate your first bootstrap invite to create the initial instance admin:"}
         </p>
-        <pre className="mt-4 overflow-x-auto rounded-md border border-border bg-muted/30 p-3 text-xs">
+        <Button
+          onClick={() => bootstrapInviteMutation.mutate()}
+          disabled={bootstrapInviteMutation.isPending}
+          className="mt-4"
+        >
+          {buttonLabel}
+        </Button>
+        {errorText ? (
+          <p className="mt-3 text-sm text-destructive">{errorText}</p>
+        ) : null}
+        {displayInviteUrl ? (
+          <div className="mt-4 rounded-md border border-border bg-muted/40 p-4">
+            <p className="text-sm font-medium">Bootstrap invite URL</p>
+            <div className="mt-2 flex items-center justify-between gap-2 rounded border border-border bg-background px-2.5 py-2 text-xs text-muted-foreground break-all">
+              <a
+                className="underline"
+                href={displayInviteUrl}
+                rel="noreferrer"
+                target="_blank"
+              >
+                {displayInviteUrl}
+              </a>
+              <CopyText text={displayInviteUrl}>Copy</CopyText>
+            </div>
+          </div>
+        ) : null}
+        <p className="mt-4 text-xs text-muted-foreground">Or run this command manually:
+        </p>
+        <pre className="mt-2 overflow-x-auto rounded-md border border-border bg-muted/30 p-3 text-xs">
 {`pnpm paperclipai auth bootstrap-ceo`}
         </pre>
       </div>

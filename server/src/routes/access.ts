@@ -9,11 +9,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Router } from "express";
 import type { Request } from "express";
-import { and, eq, isNull, desc } from "drizzle-orm";
+import { and, count, eq, gt, isNull, desc } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
   agentApiKeys,
   authUsers,
+  instanceUserRoles,
   invites,
   joinRequests
 } from "@paperclipai/db";
@@ -58,6 +59,9 @@ const INVITE_TOKEN_PREFIX = "pcp_invite_";
 const INVITE_TOKEN_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
 const INVITE_TOKEN_SUFFIX_LENGTH = 8;
 const INVITE_TOKEN_MAX_RETRIES = 5;
+const BOOTSTRAP_CEO_INVITE_TOKEN_PREFIX = "pcp_bootstrap_";
+const BOOTSTRAP_CEO_INVITE_TOKEN_LENGTH = 24;
+const BOOTSTRAP_CEO_INVITE_TTL_MS = 72 * 60 * 60 * 1000;
 const COMPANY_INVITE_TTL_MS = 10 * 60 * 1000;
 
 function createInviteToken() {
@@ -67,6 +71,10 @@ function createInviteToken() {
     suffix += INVITE_TOKEN_ALPHABET[bytes[idx]! % INVITE_TOKEN_ALPHABET.length];
   }
   return `${INVITE_TOKEN_PREFIX}${suffix}`;
+}
+
+function createBootstrapInviteToken() {
+  return `${BOOTSTRAP_CEO_INVITE_TOKEN_PREFIX}${randomBytes(BOOTSTRAP_CEO_INVITE_TOKEN_LENGTH).toString("hex")}`;
 }
 
 function createClaimSecret() {
@@ -93,6 +101,10 @@ function requestBaseUrl(req: Request) {
     req.header("x-forwarded-host")?.split(",")[0]?.trim() || req.header("host");
   if (!host) return "";
   return `${proto}://${host}`;
+}
+
+function bootstrapCeoInviteExpiresAt(nowMs: number = Date.now()) {
+  return new Date(nowMs + BOOTSTRAP_CEO_INVITE_TTL_MS);
 }
 
 function readSkillMarkdown(skillName: string): string | null {
@@ -1605,6 +1617,89 @@ export function accessRoutes(
 
     return { token, created, normalizedAgentMessage };
   }
+
+  async function assertBootstrapCeoMode(req: Request) {
+    if (opts.deploymentMode !== "authenticated") {
+      throw badRequest("Bootstrap CEO invite is only available in authenticated mode.");
+    }
+
+    const roleCount = await db
+      .select({ count: count() })
+      .from(instanceUserRoles)
+      .where(eq(instanceUserRoles.role, "instance_admin"))
+      .then((rows) => Number(rows[0]?.count ?? 0));
+
+    if (roleCount > 0) {
+      throw conflict("Instance already has an admin user.");
+    }
+
+    if (req.actor.type === "agent") {
+      throw forbidden("Instance admin is required to create bootstrap invites");
+    }
+  }
+
+  async function createBootstrapCeoInvite() {
+    const now = new Date();
+    await db
+      .update(invites)
+      .set({ revokedAt: now, updatedAt: now })
+      .where(
+        and(
+          eq(invites.inviteType, "bootstrap_ceo"),
+          isNull(invites.revokedAt),
+          isNull(invites.acceptedAt),
+          gt(invites.expiresAt, now),
+        ),
+      );
+
+    let token: string | null = null;
+    let created: typeof invites.$inferSelect | null = null;
+    for (let attempt = 0; attempt < INVITE_TOKEN_MAX_RETRIES; attempt += 1) {
+      const candidateToken = createBootstrapInviteToken();
+      try {
+        const row = await db
+          .insert(invites)
+          .values({
+            inviteType: "bootstrap_ceo",
+            tokenHash: hashToken(candidateToken),
+            allowedJoinTypes: "human",
+            expiresAt: bootstrapCeoInviteExpiresAt(),
+            invitedByUserId: "system",
+          })
+          .returning()
+          .then((rows) => rows[0]);
+        token = candidateToken;
+        created = row;
+        break;
+      } catch (error) {
+        if (!isInviteTokenHashCollisionError(error)) {
+          throw error;
+        }
+      }
+    }
+
+    if (!token || !created) {
+      throw conflict("Failed to create a unique bootstrap invite. Please retry.");
+    }
+
+    return { token, created };
+  }
+
+  router.post("/bootstrap-ceo/invite", async (req, res) => {
+    await assertBootstrapCeoMode(req);
+    const { token, created } = await createBootstrapCeoInvite();
+    const baseUrl = requestBaseUrl(req);
+    const inviteUrl = baseUrl ? `${baseUrl}/invite/${token}` : `/invite/${token}`;
+
+    res.status(201).json({
+      id: created.id,
+      token,
+      inviteType: created.inviteType,
+      allowedJoinTypes: created.allowedJoinTypes,
+      expiresAt: created.expiresAt.toISOString(),
+      inviteUrl
+    });
+  });
 
   router.get("/skills/index", (_req, res) => {
     res.json({
