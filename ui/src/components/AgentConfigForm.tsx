@@ -1,54 +1,56 @@
-import { useState, useEffect, useRef, useMemo } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AGENT_ADAPTER_TYPES } from "@paperclipai/shared";
-import type {
-  Agent,
-  AdapterEnvironmentTestResult,
-  CompanySecret,
-  EnvBinding,
-} from "@paperclipai/shared";
-import type { AdapterModel } from "../api/agents";
-import { agentsApi } from "../api/agents";
-import { secretsApi } from "../api/secrets";
-import { assetsApi } from "../api/assets";
 import {
   DEFAULT_CODEX_LOCAL_BYPASS_APPROVALS_AND_SANDBOX,
   DEFAULT_CODEX_LOCAL_MODEL,
 } from "@paperclipai/adapter-codex-local";
 import { DEFAULT_CURSOR_LOCAL_MODEL } from "@paperclipai/adapter-cursor-local";
+import { DEFAULT_GEMINI_LOCAL_MODEL } from "@paperclipai/adapter-gemini-local";
+import type {
+  AdapterEnvironmentTestResult,
+  Agent,
+  CompanySecret,
+  EnvBinding,
+} from "@paperclipai/shared";
+import { AGENT_ADAPTER_TYPES } from "@paperclipai/shared";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronDown, FolderOpen, Heart, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Button } from "@/components/ui/button";
-import { FolderOpen, Heart, ChevronDown, X } from "lucide-react";
-import { cn } from "../lib/utils";
+import { getUIAdapter } from "../adapters";
+import { ClaudeLocalAdvancedFields } from "../adapters/claude-local/config-fields";
+import type { AdapterModel } from "../api/agents";
+import { agentsApi } from "../api/agents";
+import { assetsApi } from "../api/assets";
+import { secretsApi } from "../api/secrets";
+import { useCompany } from "../context/CompanyContext";
 import { extractModelName, extractProviderId } from "../lib/model-utils";
 import { queryKeys } from "../lib/queryKeys";
-import { useCompany } from "../context/CompanyContext";
+import { cn } from "../lib/utils";
+import { defaultCreateValues } from "./agent-config-defaults";
 import {
-  Field,
-  ToggleField,
-  ToggleWithNumber,
+  adapterLabels,
   CollapsibleSection,
   DraftInput,
   DraftNumberInput,
+  Field,
   help,
-  adapterLabels,
+  ToggleField,
+  ToggleWithNumber,
 } from "./agent-config-primitives";
-import { defaultCreateValues } from "./agent-config-defaults";
-import { getUIAdapter } from "../adapters";
-import { ClaudeLocalAdvancedFields } from "../adapters/claude-local/config-fields";
 import { MarkdownEditor } from "./MarkdownEditor";
-import { ChoosePathButton } from "./PathInstructionsModal";
 import { OpenCodeLogoIcon } from "./OpenCodeLogoIcon";
+import { ChoosePathButton } from "./PathInstructionsModal";
 
 /* ---- Create mode values ---- */
 
 // Canonical type lives in @paperclipai/adapter-utils; re-exported here
 // so existing imports from this file keep working.
 export type { CreateConfigValues } from "@paperclipai/adapter-utils";
+
 import type { CreateConfigValues } from "@paperclipai/adapter-utils";
 
 /* ---- Props ---- */
@@ -155,7 +157,6 @@ const claudeThinkingEffortOptions = [
   { id: "high", label: "High" },
 ] as const;
 
-
 /* ---- Form ---- */
 
 export function AgentConfigForm(props: AgentConfigFormProps) {
@@ -166,25 +167,37 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
   const queryClient = useQueryClient();
 
   const { data: availableSecrets = [] } = useQuery({
-    queryKey: selectedCompanyId ? queryKeys.secrets.list(selectedCompanyId) : ["secrets", "none"],
+    queryKey: selectedCompanyId
+      ? queryKeys.secrets.list(selectedCompanyId)
+      : ["secrets", "none"],
     queryFn: () => secretsApi.list(selectedCompanyId!),
     enabled: Boolean(selectedCompanyId),
   });
 
   const createSecret = useMutation({
     mutationFn: (input: { name: string; value: string }) => {
-      if (!selectedCompanyId) throw new Error("Select a company to create secrets");
+      if (!selectedCompanyId)
+        throw new Error("Select a company to create secrets");
       return secretsApi.create(selectedCompanyId, input);
     },
     onSuccess: () => {
       if (!selectedCompanyId) return;
-      queryClient.invalidateQueries({ queryKey: queryKeys.secrets.list(selectedCompanyId) });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.secrets.list(selectedCompanyId),
+      });
     },
   });
 
   const uploadMarkdownImage = useMutation({
-    mutationFn: async ({ file, namespace }: { file: File; namespace: string }) => {
-      if (!selectedCompanyId) throw new Error("Select a company to upload images");
+    mutationFn: async ({
+      file,
+      namespace,
+    }: {
+      file: File;
+      namespace: string;
+    }) => {
+      if (!selectedCompanyId)
+        throw new Error("Select a company to upload images");
       return assetsApi.uploadImage(selectedCompanyId, file, namespace);
     },
   });
@@ -206,14 +219,22 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
   const isDirty = !isCreate && isOverlayDirty(overlay);
 
   /** Read effective value: overlay if dirty, else original */
-  function eff<T>(group: keyof Omit<Overlay, "adapterType">, field: string, original: T): T {
+  function eff<T>(
+    group: keyof Omit<Overlay, "adapterType">,
+    field: string,
+    original: T
+  ): T {
     const o = overlay[group];
     if (field in o) return o[field] as T;
     return original;
   }
 
   /** Mark field dirty in overlay */
-  function mark(group: keyof Omit<Overlay, "adapterType">, field: string, value: unknown) {
+  function mark(
+    group: keyof Omit<Overlay, "adapterType">,
+    field: string,
+    value: unknown
+  ) {
     setOverlay((prev) => ({
       ...prev,
       [group]: { ...prev[group], [field]: value },
@@ -221,7 +242,11 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
   }
 
   /** Build accumulated patch and send to parent */
-  function handleSave() {
+  const handleCancel = useCallback(() => {
+    setOverlay({ ...emptyOverlay });
+  }, []);
+
+  const handleSave = useCallback(() => {
     if (isCreate || !isDirty) return;
     const agent = props.agent;
     const patch: Record<string, unknown> = {};
@@ -240,50 +265,76 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
     }
     if (Object.keys(overlay.heartbeat).length > 0) {
       const existingRc = (agent.runtimeConfig ?? {}) as Record<string, unknown>;
-      const existingHb = (existingRc.heartbeat ?? {}) as Record<string, unknown>;
-      patch.runtimeConfig = { ...existingRc, heartbeat: { ...existingHb, ...overlay.heartbeat } };
+      const existingHb = (existingRc.heartbeat ?? {}) as Record<
+        string,
+        unknown
+      >;
+      patch.runtimeConfig = {
+        ...existingRc,
+        heartbeat: { ...existingHb, ...overlay.heartbeat },
+      };
     }
     if (Object.keys(overlay.runtime).length > 0) {
       Object.assign(patch, overlay.runtime);
     }
 
     props.onSave(patch);
-  }
+  }, [isCreate, isDirty, overlay, props]);
 
   useEffect(() => {
     if (!isCreate) {
       props.onDirtyChange?.(isDirty);
-      props.onSaveActionChange?.(() => handleSave());
-      props.onCancelActionChange?.(() => setOverlay({ ...emptyOverlay }));
-      return () => {
-        props.onSaveActionChange?.(null);
-        props.onCancelActionChange?.(null);
-        props.onDirtyChange?.(false);
-      };
+      props.onSaveActionChange?.(handleSave);
+      props.onCancelActionChange?.(handleCancel);
     }
-    return;
-  }, [isCreate, isDirty, props.onDirtyChange, props.onSaveActionChange, props.onCancelActionChange, overlay]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [
+    isCreate,
+    isDirty,
+    props.onDirtyChange,
+    props.onSaveActionChange,
+    props.onCancelActionChange,
+    handleSave,
+    handleCancel,
+  ]);
+
+  useEffect(() => {
+    if (isCreate) return;
+    return () => {
+      props.onSaveActionChange?.(null);
+      props.onCancelActionChange?.(null);
+      props.onDirtyChange?.(false);
+    };
+  }, [
+    isCreate,
+    props.onDirtyChange,
+    props.onSaveActionChange,
+    props.onCancelActionChange,
+  ]);
 
   // ---- Resolve values ----
-  const config = !isCreate ? ((props.agent.adapterConfig ?? {}) as Record<string, unknown>) : {};
-  const runtimeConfig = !isCreate ? ((props.agent.runtimeConfig ?? {}) as Record<string, unknown>) : {};
-  const heartbeat = !isCreate ? ((runtimeConfig.heartbeat ?? {}) as Record<string, unknown>) : {};
+  const config = !isCreate
+    ? ((props.agent.adapterConfig ?? {}) as Record<string, unknown>)
+    : {};
+  const runtimeConfig = !isCreate
+    ? ((props.agent.runtimeConfig ?? {}) as Record<string, unknown>)
+    : {};
+  const heartbeat = !isCreate
+    ? ((runtimeConfig.heartbeat ?? {}) as Record<string, unknown>)
+    : {};
 
   const adapterType = isCreate
     ? props.values.adapterType
-    : overlay.adapterType ?? props.agent.adapterType;
+    : (overlay.adapterType ?? props.agent.adapterType);
   const isLocal =
     adapterType === "claude_local" ||
     adapterType === "codex_local" ||
+    adapterType === "gemini_local" ||
     adapterType === "opencode_local" ||
     adapterType === "cursor";
   const uiAdapter = useMemo(() => getUIAdapter(adapterType), [adapterType]);
 
   // Fetch adapter models for the effective adapter type
-  const {
-    data: fetchedModels,
-    error: fetchedModelsError,
-  } = useQuery({
+  const { data: fetchedModels, error: fetchedModelsError } = useQuery({
     queryKey: selectedCompanyId
       ? queryKeys.agents.adapterModels(selectedCompanyId, adapterType)
       : ["agents", "none", "adapter-models", adapterType],
@@ -298,10 +349,16 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
     isCreate,
     adapterType,
     values: isCreate ? props.values : null,
-    set: isCreate ? (patch: Partial<CreateConfigValues>) => props.onChange(patch) : null,
+    set: isCreate
+      ? (patch: Partial<CreateConfigValues>) => props.onChange(patch)
+      : null,
     config,
     eff: eff as <T>(group: "adapterConfig", field: string, original: T) => T,
-    mark: mark as (group: "adapterConfig", field: string, value: unknown) => void,
+    mark: mark as (
+      group: "adapterConfig",
+      field: string,
+      value: unknown
+    ) => void,
     models,
   };
 
@@ -363,16 +420,20 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
       ? eff(
           "adapterConfig",
           "modelReasoningEffort",
-          String(config.modelReasoningEffort ?? config.reasoningEffort ?? ""),
+          String(config.modelReasoningEffort ?? config.reasoningEffort ?? "")
         )
       : adapterType === "cursor"
         ? eff("adapterConfig", "mode", String(config.mode ?? ""))
         : adapterType === "opencode_local"
           ? eff("adapterConfig", "variant", String(config.variant ?? ""))
-      : eff("adapterConfig", "effort", String(config.effort ?? ""));
-  const codexSearchEnabled = adapterType === "codex_local"
-    ? (isCreate ? Boolean(val!.search) : eff("adapterConfig", "search", Boolean(config.search)))
-    : false;
+          : eff("adapterConfig", "effort", String(config.effort ?? ""));
+  const showThinkingEffort = adapterType !== "gemini_local";
+  const codexSearchEnabled =
+    adapterType === "codex_local"
+      ? isCreate
+        ? Boolean(val!.search)
+        : eff("adapterConfig", "search", Boolean(config.search))
+      : false;
 
   return (
     <div className={cn("relative", cards && "space-y-6")}>
@@ -380,7 +441,9 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
       {isDirty && !props.hideInlineSave && (
         <div className="sticky top-0 z-10 flex items-center justify-end px-4 py-2 bg-background/90 backdrop-blur-sm border-b border-primary/20">
           <div className="flex items-center gap-3">
-            <span className="text-xs text-muted-foreground">Unsaved changes</span>
+            <span className="text-xs text-muted-foreground">
+              Unsaved changes
+            </span>
             <Button
               size="sm"
               onClick={handleSave}
@@ -395,11 +458,20 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
       {/* ---- Identity (edit only) ---- */}
       {!isCreate && (
         <div className={cn(!cards && "border-b border-border")}>
-          {cards
-            ? <h3 className="text-sm font-medium mb-3">Identity</h3>
-            : <div className="px-4 py-2 text-xs font-medium text-muted-foreground">Identity</div>
-          }
-          <div className={cn(cards ? "border border-border rounded-lg p-4 space-y-3" : "px-4 pb-3 space-y-3")}>
+          {cards ? (
+            <h3 className="text-sm font-medium mb-3">Identity</h3>
+          ) : (
+            <div className="px-4 py-2 text-xs font-medium text-muted-foreground">
+              Identity
+            </div>
+          )}
+          <div
+            className={cn(
+              cards
+                ? "border border-border rounded-lg p-4 space-y-3"
+                : "px-4 pb-3 space-y-3"
+            )}
+          >
             <Field label="Name" hint={help.name}>
               <DraftInput
                 value={eff("identity", "name", props.agent.name)}
@@ -420,7 +492,11 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
             </Field>
             <Field label="Capabilities" hint={help.capabilities}>
               <MarkdownEditor
-                value={eff("identity", "capabilities", props.agent.capabilities ?? "")}
+                value={eff(
+                  "identity",
+                  "capabilities",
+                  props.agent.capabilities ?? ""
+                )}
                 onChange={(v) => mark("identity", "capabilities", v || null)}
                 placeholder="Describe what this agent can do..."
                 contentClassName="min-h-[44px] text-sm font-mono"
@@ -439,14 +515,19 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                   value={eff(
                     "adapterConfig",
                     "promptTemplate",
-                    String(config.promptTemplate ?? ""),
+                    String(config.promptTemplate ?? "")
                   )}
-                  onChange={(v) => mark("adapterConfig", "promptTemplate", v ?? "")}
+                  onChange={(v) =>
+                    mark("adapterConfig", "promptTemplate", v ?? "")
+                  }
                   placeholder="You are agent {{ agent.name }}. Your role is {{ agent.role }}..."
                   contentClassName="min-h-[88px] text-sm font-mono"
                   imageUploadHandler={async (file) => {
                     const namespace = `agents/${props.agent.id}/prompt-template`;
-                    const asset = await uploadMarkdownImage.mutateAsync({ file, namespace });
+                    const asset = await uploadMarkdownImage.mutateAsync({
+                      file,
+                      namespace,
+                    });
                     return asset.contentPath;
                   }}
                 />
@@ -457,12 +538,26 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
       )}
 
       {/* ---- Adapter ---- */}
-      <div className={cn(!cards && (isCreate ? "border-t border-border" : "border-b border-border"))}>
-        <div className={cn(cards ? "flex items-center justify-between mb-3" : "px-4 py-2 flex items-center justify-between gap-2")}>
-          {cards
-            ? <h3 className="text-sm font-medium">Adapter</h3>
-            : <span className="text-xs font-medium text-muted-foreground">Adapter</span>
-          }
+      <div
+        className={cn(
+          !cards &&
+            (isCreate ? "border-t border-border" : "border-b border-border")
+        )}
+      >
+        <div
+          className={cn(
+            cards
+              ? "flex items-center justify-between mb-3"
+              : "px-4 py-2 flex items-center justify-between gap-2"
+          )}
+        >
+          {cards ? (
+            <h3 className="text-sm font-medium">Adapter</h3>
+          ) : (
+            <span className="text-xs font-medium text-muted-foreground">
+              Adapter
+            </span>
+          )}
           <Button
             type="button"
             variant="outline"
@@ -474,7 +569,13 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
             {testEnvironment.isPending ? "Testing..." : "Test environment"}
           </Button>
         </div>
-        <div className={cn(cards ? "border border-border rounded-lg p-4 space-y-3" : "px-4 pb-3 space-y-3")}>
+        <div
+          className={cn(
+            cards
+              ? "border border-border rounded-lg p-4 space-y-3"
+              : "px-4 pb-3 space-y-3"
+          )}
+        >
           <Field label="Adapter type" hint={help.adapterType}>
             <AdapterTypeDropdown
               value={adapterType}
@@ -482,11 +583,16 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                 if (isCreate) {
                   // Reset all adapter-specific fields to defaults when switching adapter type
                   const { adapterType: _at, ...defaults } = defaultCreateValues;
-                  const nextValues: CreateConfigValues = { ...defaults, adapterType: t };
+                  const nextValues: CreateConfigValues = {
+                    ...defaults,
+                    adapterType: t,
+                  };
                   if (t === "codex_local") {
                     nextValues.model = DEFAULT_CODEX_LOCAL_MODEL;
                     nextValues.dangerouslyBypassSandbox =
                       DEFAULT_CODEX_LOCAL_BYPASS_APPROVALS_AND_SANDBOX;
+                  } else if (t === "gemini_local") {
+                    nextValues.model = DEFAULT_GEMINI_LOCAL_MODEL;
                   } else if (t === "cursor") {
                     nextValues.model = DEFAULT_CURSOR_LOCAL_MODEL;
                   } else if (t === "opencode_local") {
@@ -503,9 +609,11 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                       model:
                         t === "codex_local"
                           ? DEFAULT_CODEX_LOCAL_MODEL
-                          : t === "cursor"
-                            ? DEFAULT_CURSOR_LOCAL_MODEL
-                          : "",
+                          : t === "gemini_local"
+                            ? DEFAULT_GEMINI_LOCAL_MODEL
+                            : t === "cursor"
+                              ? DEFAULT_CURSOR_LOCAL_MODEL
+                              : "",
                       effort: "",
                       modelReasoningEffort: "",
                       variant: "",
@@ -570,7 +678,10 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                 contentClassName="min-h-[88px] text-sm font-mono"
                 imageUploadHandler={async (file) => {
                   const namespace = "agents/drafts/prompt-template";
-                  const asset = await uploadMarkdownImage.mutateAsync({ file, namespace });
+                  const asset = await uploadMarkdownImage.mutateAsync({
+                    file,
+                    namespace,
+                  });
                   return asset.contentPath;
                 }}
               />
@@ -580,182 +691,233 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
           {/* Adapter-specific fields */}
           <uiAdapter.ConfigFields {...adapterFieldProps} />
         </div>
-
       </div>
 
       {/* ---- Permissions & Configuration ---- */}
       {isLocal && (
         <div className={cn(!cards && "border-b border-border")}>
-          {cards
-            ? <h3 className="text-sm font-medium mb-3">Permissions &amp; Configuration</h3>
-            : <div className="px-4 py-2 text-xs font-medium text-muted-foreground">Permissions &amp; Configuration</div>
-          }
-          <div className={cn(cards ? "border border-border rounded-lg p-4 space-y-3" : "px-4 pb-3 space-y-3")}>
-              <Field label="Command" hint={help.localCommand}>
-                <DraftInput
-                  value={
-                    isCreate
-                      ? val!.command
-                      : eff("adapterConfig", "command", String(config.command ?? ""))
-                  }
-                  onCommit={(v) =>
-                    isCreate
-                      ? set!({ command: v })
-                      : mark("adapterConfig", "command", v || undefined)
-                  }
-                  immediate
-                  className={inputClass}
-                  placeholder={
-                    adapterType === "codex_local"
-                      ? "codex"
+          {cards ? (
+            <h3 className="text-sm font-medium mb-3">
+              Permissions &amp; Configuration
+            </h3>
+          ) : (
+            <div className="px-4 py-2 text-xs font-medium text-muted-foreground">
+              Permissions &amp; Configuration
+            </div>
+          )}
+          <div
+            className={cn(
+              cards
+                ? "border border-border rounded-lg p-4 space-y-3"
+                : "px-4 pb-3 space-y-3"
+            )}
+          >
+            <Field label="Command" hint={help.localCommand}>
+              <DraftInput
+                value={
+                  isCreate
+                    ? val!.command
+                    : eff(
+                        "adapterConfig",
+                        "command",
+                        String(config.command ?? "")
+                      )
+                }
+                onCommit={(v) =>
+                  isCreate
+                    ? set!({ command: v })
+                    : mark("adapterConfig", "command", v || undefined)
+                }
+                immediate
+                className={inputClass}
+                placeholder={
+                  adapterType === "codex_local"
+                    ? "codex"
+                    : adapterType === "gemini_local"
+                      ? "gemini"
                       : adapterType === "cursor"
                         ? "agent"
                         : adapterType === "opencode_local"
                           ? "opencode"
                           : "claude"
-                  }
-                />
-              </Field>
-
-              <ModelDropdown
-                models={models}
-                value={currentModelId}
-                onChange={(v) =>
-                  isCreate
-                    ? set!({ model: v })
-                    : mark("adapterConfig", "model", v || undefined)
                 }
-                open={modelOpen}
-                onOpenChange={setModelOpen}
-                allowDefault={adapterType !== "opencode_local"}
-                required={adapterType === "opencode_local"}
-                groupByProvider={adapterType === "opencode_local"}
               />
-              {fetchedModelsError && (
-                <p className="text-xs text-destructive">
-                  {fetchedModelsError instanceof Error
-                    ? fetchedModelsError.message
-                    : "Failed to load adapter models."}
-                </p>
-              )}
+            </Field>
 
-              <ThinkingEffortDropdown
-                value={currentThinkingEffort}
-                options={thinkingEffortOptions}
-                onChange={(v) =>
-                  isCreate
-                    ? set!({ thinkingEffort: v })
-                    : mark("adapterConfig", thinkingEffortKey, v || undefined)
-                }
-                open={thinkingEffortOpen}
-                onOpenChange={setThinkingEffortOpen}
-              />
-              {adapterType === "codex_local" &&
-                codexSearchEnabled &&
-                currentThinkingEffort === "minimal" && (
-                  <p className="text-xs text-amber-400">
-                    Codex may reject `minimal` thinking when search is enabled.
-                  </p>
-                )}
-              <Field label="Bootstrap prompt (first run)" hint={help.bootstrapPrompt}>
-                <MarkdownEditor
-                  value={
-                    isCreate
-                      ? val!.bootstrapPrompt
-                      : eff(
-                          "adapterConfig",
-                          "bootstrapPromptTemplate",
-                          String(config.bootstrapPromptTemplate ?? ""),
-                        )
-                  }
+            <ModelDropdown
+              models={models}
+              value={currentModelId}
+              onChange={(v) =>
+                isCreate
+                  ? set!({ model: v })
+                  : mark("adapterConfig", "model", v || undefined)
+              }
+              open={modelOpen}
+              onOpenChange={setModelOpen}
+              allowDefault={adapterType !== "opencode_local"}
+              required={adapterType === "opencode_local"}
+              groupByProvider={adapterType === "opencode_local"}
+            />
+            {fetchedModelsError && (
+              <p className="text-xs text-destructive">
+                {fetchedModelsError instanceof Error
+                  ? fetchedModelsError.message
+                  : "Failed to load adapter models."}
+              </p>
+            )}
+
+            {showThinkingEffort && (
+              <>
+                <ThinkingEffortDropdown
+                  value={currentThinkingEffort}
+                  options={thinkingEffortOptions}
                   onChange={(v) =>
                     isCreate
-                      ? set!({ bootstrapPrompt: v })
-                      : mark("adapterConfig", "bootstrapPromptTemplate", v || undefined)
+                      ? set!({ thinkingEffort: v })
+                      : mark("adapterConfig", thinkingEffortKey, v || undefined)
                   }
-                  placeholder="Optional initial setup prompt for the first run"
-                  contentClassName="min-h-[44px] text-sm font-mono"
-                  imageUploadHandler={async (file) => {
-                    const namespace = isCreate
-                      ? "agents/drafts/bootstrap-prompt"
-                      : `agents/${props.agent.id}/bootstrap-prompt`;
-                    const asset = await uploadMarkdownImage.mutateAsync({ file, namespace });
-                    return asset.contentPath;
-                  }}
+                  open={thinkingEffortOpen}
+                  onOpenChange={setThinkingEffortOpen}
                 />
-              </Field>
-              {adapterType === "claude_local" && (
-                <ClaudeLocalAdvancedFields {...adapterFieldProps} />
-              )}
-
-              <Field label="Extra args (comma-separated)" hint={help.extraArgs}>
-                <DraftInput
-                  value={
-                    isCreate
-                      ? val!.extraArgs
-                      : eff("adapterConfig", "extraArgs", formatArgList(config.extraArgs))
-                  }
-                  onCommit={(v) =>
-                    isCreate
-                      ? set!({ extraArgs: v })
-                      : mark("adapterConfig", "extraArgs", v ? parseCommaArgs(v) : undefined)
-                  }
-                  immediate
-                  className={inputClass}
-                  placeholder="e.g. --verbose, --foo=bar"
-                />
-              </Field>
-
-              <Field label="Environment variables" hint={help.envVars}>
-                <EnvVarEditor
-                  value={
-                    isCreate
-                      ? ((val!.envBindings ?? EMPTY_ENV) as Record<string, EnvBinding>)
-                      : ((eff("adapterConfig", "env", (config.env ?? EMPTY_ENV) as Record<string, EnvBinding>))
+                {adapterType === "codex_local" &&
+                  codexSearchEnabled &&
+                  currentThinkingEffort === "minimal" && (
+                    <p className="text-xs text-amber-400">
+                      Codex may reject `minimal` thinking when search is
+                      enabled.
+                    </p>
+                  )}
+              </>
+            )}
+            <Field
+              label="Bootstrap prompt (first run)"
+              hint={help.bootstrapPrompt}
+            >
+              <MarkdownEditor
+                value={
+                  isCreate
+                    ? val!.bootstrapPrompt
+                    : eff(
+                        "adapterConfig",
+                        "bootstrapPromptTemplate",
+                        String(config.bootstrapPromptTemplate ?? "")
                       )
-                  }
-                  secrets={availableSecrets}
-                  onCreateSecret={async (name, value) => {
-                    const created = await createSecret.mutateAsync({ name, value });
-                    return created;
-                  }}
-                  onChange={(env) =>
-                    isCreate
-                      ? set!({ envBindings: env ?? {}, envVars: "" })
-                      : mark("adapterConfig", "env", env)
-                  }
-                />
-              </Field>
+                }
+                onChange={(v) =>
+                  isCreate
+                    ? set!({ bootstrapPrompt: v })
+                    : mark(
+                        "adapterConfig",
+                        "bootstrapPromptTemplate",
+                        v || undefined
+                      )
+                }
+                placeholder="Optional initial setup prompt for the first run"
+                contentClassName="min-h-[44px] text-sm font-mono"
+                imageUploadHandler={async (file) => {
+                  const namespace = isCreate
+                    ? "agents/drafts/bootstrap-prompt"
+                    : `agents/${props.agent.id}/bootstrap-prompt`;
+                  const asset = await uploadMarkdownImage.mutateAsync({
+                    file,
+                    namespace,
+                  });
+                  return asset.contentPath;
+                }}
+              />
+            </Field>
+            {adapterType === "claude_local" && (
+              <ClaudeLocalAdvancedFields {...adapterFieldProps} />
+            )}
 
-              {/* Edit-only: timeout + grace period */}
-              {!isCreate && (
-                <>
-                  <Field label="Timeout (sec)" hint={help.timeoutSec}>
-                    <DraftNumberInput
-                      value={eff(
+            <Field label="Extra args (comma-separated)" hint={help.extraArgs}>
+              <DraftInput
+                value={
+                  isCreate
+                    ? val!.extraArgs
+                    : eff(
                         "adapterConfig",
-                        "timeoutSec",
-                        Number(config.timeoutSec ?? 0),
-                      )}
-                      onCommit={(v) => mark("adapterConfig", "timeoutSec", v)}
-                      immediate
-                      className={inputClass}
-                    />
-                  </Field>
-                  <Field label="Interrupt grace period (sec)" hint={help.graceSec}>
-                    <DraftNumberInput
-                      value={eff(
+                        "extraArgs",
+                        formatArgList(config.extraArgs)
+                      )
+                }
+                onCommit={(v) =>
+                  isCreate
+                    ? set!({ extraArgs: v })
+                    : mark(
                         "adapterConfig",
-                        "graceSec",
-                        Number(config.graceSec ?? 15),
-                      )}
-                      onCommit={(v) => mark("adapterConfig", "graceSec", v)}
-                      immediate
-                      className={inputClass}
-                    />
-                  </Field>
-                </>
-              )}
+                        "extraArgs",
+                        v ? parseCommaArgs(v) : undefined
+                      )
+                }
+                immediate
+                className={inputClass}
+                placeholder="e.g. --verbose, --foo=bar"
+              />
+            </Field>
+
+            <Field label="Environment variables" hint={help.envVars}>
+              <EnvVarEditor
+                value={
+                  isCreate
+                    ? ((val!.envBindings ?? EMPTY_ENV) as Record<
+                        string,
+                        EnvBinding
+                      >)
+                    : eff(
+                        "adapterConfig",
+                        "env",
+                        (config.env ?? EMPTY_ENV) as Record<string, EnvBinding>
+                      )
+                }
+                secrets={availableSecrets}
+                onCreateSecret={async (name, value) => {
+                  const created = await createSecret.mutateAsync({
+                    name,
+                    value,
+                  });
+                  return created;
+                }}
+                onChange={(env) =>
+                  isCreate
+                    ? set!({ envBindings: env ?? {}, envVars: "" })
+                    : mark("adapterConfig", "env", env)
+                }
+              />
+            </Field>
+
+            {/* Edit-only: timeout + grace period */}
+            {!isCreate && (
+              <>
+                <Field label="Timeout (sec)" hint={help.timeoutSec}>
+                  <DraftNumberInput
+                    value={eff(
+                      "adapterConfig",
+                      "timeoutSec",
+                      Number(config.timeoutSec ?? 0)
+                    )}
+                    onCommit={(v) => mark("adapterConfig", "timeoutSec", v)}
+                    immediate
+                    className={inputClass}
+                  />
+                </Field>
+                <Field
+                  label="Interrupt grace period (sec)"
+                  hint={help.graceSec}
+                >
+                  <DraftNumberInput
+                    value={eff(
+                      "adapterConfig",
+                      "graceSec",
+                      Number(config.graceSec ?? 15)
+                    )}
+                    onCommit={(v) => mark("adapterConfig", "graceSec", v)}
+                    immediate
+                    className={inputClass}
+                  />
+                </Field>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -763,11 +925,22 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
       {/* ---- Run Policy ---- */}
       {isCreate ? (
         <div className={cn(!cards && "border-b border-border")}>
-          {cards
-            ? <h3 className="text-sm font-medium flex items-center gap-2 mb-3"><Heart className="h-3 w-3" /> Run Policy</h3>
-            : <div className="px-4 py-2 text-xs font-medium text-muted-foreground flex items-center gap-2"><Heart className="h-3 w-3" /> Run Policy</div>
-          }
-          <div className={cn(cards ? "border border-border rounded-lg p-4 space-y-3" : "px-4 pb-3 space-y-3")}>
+          {cards ? (
+            <h3 className="text-sm font-medium flex items-center gap-2 mb-3">
+              <Heart className="h-3 w-3" /> Run Policy
+            </h3>
+          ) : (
+            <div className="px-4 py-2 text-xs font-medium text-muted-foreground flex items-center gap-2">
+              <Heart className="h-3 w-3" /> Run Policy
+            </div>
+          )}
+          <div
+            className={cn(
+              cards
+                ? "border border-border rounded-lg p-4 space-y-3"
+                : "px-4 pb-3 space-y-3"
+            )}
+          >
             <ToggleWithNumber
               label="Heartbeat on interval"
               hint={help.heartbeatInterval}
@@ -784,23 +957,46 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
         </div>
       ) : (
         <div className={cn(!cards && "border-b border-border")}>
-          {cards
-            ? <h3 className="text-sm font-medium flex items-center gap-2 mb-3"><Heart className="h-3 w-3" /> Run Policy</h3>
-            : <div className="px-4 py-2 text-xs font-medium text-muted-foreground flex items-center gap-2"><Heart className="h-3 w-3" /> Run Policy</div>
-          }
-          <div className={cn(cards ? "border border-border rounded-lg overflow-hidden" : "")}>
-            <div className={cn(cards ? "p-4 space-y-3" : "px-4 pb-3 space-y-3")}>
+          {cards ? (
+            <h3 className="text-sm font-medium flex items-center gap-2 mb-3">
+              <Heart className="h-3 w-3" /> Run Policy
+            </h3>
+          ) : (
+            <div className="px-4 py-2 text-xs font-medium text-muted-foreground flex items-center gap-2">
+              <Heart className="h-3 w-3" /> Run Policy
+            </div>
+          )}
+          <div
+            className={cn(
+              cards ? "border border-border rounded-lg overflow-hidden" : ""
+            )}
+          >
+            <div
+              className={cn(cards ? "p-4 space-y-3" : "px-4 pb-3 space-y-3")}
+            >
               <ToggleWithNumber
                 label="Heartbeat on interval"
                 hint={help.heartbeatInterval}
-                checked={eff("heartbeat", "enabled", heartbeat.enabled !== false)}
+                checked={eff(
+                  "heartbeat",
+                  "enabled",
+                  heartbeat.enabled !== false
+                )}
                 onCheckedChange={(v) => mark("heartbeat", "enabled", v)}
-                number={eff("heartbeat", "intervalSec", Number(heartbeat.intervalSec ?? 300))}
+                number={eff(
+                  "heartbeat",
+                  "intervalSec",
+                  Number(heartbeat.intervalSec ?? 300)
+                )}
                 onNumberChange={(v) => mark("heartbeat", "intervalSec", v)}
                 numberLabel="sec"
                 numberPrefix="Run heartbeat every"
                 numberHint={help.intervalSec}
-                showNumber={eff("heartbeat", "enabled", heartbeat.enabled !== false)}
+                showNumber={eff(
+                  "heartbeat",
+                  "enabled",
+                  heartbeat.enabled !== false
+                )}
               />
             </div>
             <CollapsibleSection
@@ -809,54 +1005,64 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
               open={runPolicyAdvancedOpen}
               onToggle={() => setRunPolicyAdvancedOpen(!runPolicyAdvancedOpen)}
             >
-            <div className="space-y-3">
-              <ToggleField
-                label="Wake on demand"
-                hint={help.wakeOnDemand}
-                checked={eff(
-                  "heartbeat",
-                  "wakeOnDemand",
-                  heartbeat.wakeOnDemand !== false,
-                )}
-                onChange={(v) => mark("heartbeat", "wakeOnDemand", v)}
-              />
-              <Field label="Cooldown (sec)" hint={help.cooldownSec}>
-                <DraftNumberInput
-                  value={eff(
+              <div className="space-y-3">
+                <ToggleField
+                  label="Wake on demand"
+                  hint={help.wakeOnDemand}
+                  checked={eff(
                     "heartbeat",
-                    "cooldownSec",
-                    Number(heartbeat.cooldownSec ?? 10),
+                    "wakeOnDemand",
+                    heartbeat.wakeOnDemand !== false
                   )}
-                  onCommit={(v) => mark("heartbeat", "cooldownSec", v)}
-                  immediate
-                  className={inputClass}
+                  onChange={(v) => mark("heartbeat", "wakeOnDemand", v)}
                 />
-              </Field>
-              <Field label="Max concurrent runs" hint={help.maxConcurrentRuns}>
-                <DraftNumberInput
-                  value={eff(
-                    "heartbeat",
-                    "maxConcurrentRuns",
-                    Number(heartbeat.maxConcurrentRuns ?? 1),
-                  )}
-                  onCommit={(v) => mark("heartbeat", "maxConcurrentRuns", v)}
-                  immediate
-                  className={inputClass}
-                />
-              </Field>
-            </div>
-          </CollapsibleSection>
+                <Field label="Cooldown (sec)" hint={help.cooldownSec}>
+                  <DraftNumberInput
+                    value={eff(
+                      "heartbeat",
+                      "cooldownSec",
+                      Number(heartbeat.cooldownSec ?? 10)
+                    )}
+                    onCommit={(v) => mark("heartbeat", "cooldownSec", v)}
+                    immediate
+                    className={inputClass}
+                  />
+                </Field>
+                <Field
+                  label="Max concurrent runs"
+                  hint={help.maxConcurrentRuns}
+                >
+                  <DraftNumberInput
+                    value={eff(
+                      "heartbeat",
+                      "maxConcurrentRuns",
+                      Number(heartbeat.maxConcurrentRuns ?? 1)
+                    )}
+                    onCommit={(v) => mark("heartbeat", "maxConcurrentRuns", v)}
+                    immediate
+                    className={inputClass}
+                  />
+                </Field>
+              </div>
+            </CollapsibleSection>
           </div>
         </div>
       )}
-
     </div>
   );
 }
 
-function AdapterEnvironmentResult({ result }: { result: AdapterEnvironmentTestResult }) {
+function AdapterEnvironmentResult({
+  result,
+}: {
+  result: AdapterEnvironmentTestResult;
+}) {
   const statusLabel =
-    result.status === "pass" ? "Passed" : result.status === "warn" ? "Warnings" : "Failed";
+    result.status === "pass"
+      ? "Passed"
+      : result.status === "warn"
+        ? "Warnings"
+        : "Failed";
   const statusClass =
     result.status === "pass"
       ? "text-green-700 dark:text-green-300 border-green-300 dark:border-green-500/40 bg-green-50 dark:bg-green-500/10"
@@ -874,14 +1080,25 @@ function AdapterEnvironmentResult({ result }: { result: AdapterEnvironmentTestRe
       </div>
       <div className="mt-2 space-y-1.5">
         {result.checks.map((check, idx) => (
-          <div key={`${check.code}-${idx}`} className="text-[11px] leading-relaxed break-words">
+          <div
+            key={`${check.code}-${idx}`}
+            className="text-[11px] leading-relaxed break-words"
+          >
             <span className="font-medium uppercase tracking-wide opacity-80">
               {check.level}
             </span>
             <span className="mx-1 opacity-60">·</span>
             <span>{check.message}</span>
-            {check.detail && <span className="block opacity-75 break-all">({check.detail})</span>}
-            {check.hint && <span className="block opacity-90 break-words">Hint: {check.hint}</span>}
+            {check.detail && (
+              <span className="block opacity-75 break-all">
+                ({check.detail})
+              </span>
+            )}
+            {check.hint && (
+              <span className="block opacity-90 break-words">
+                Hint: {check.hint}
+              </span>
+            )}
           </div>
         ))}
       </div>
@@ -894,13 +1111,18 @@ function AdapterEnvironmentResult({ result }: { result: AdapterEnvironmentTestRe
 const ENABLED_ADAPTER_TYPES = new Set([
   "claude_local",
   "codex_local",
+  "gemini_local",
   "opencode_local",
   "cursor",
   "openclaw_gateway",
 ]);
 
 /** Display list includes all real adapter types plus UI-only coming-soon entries. */
-const ADAPTER_DISPLAY_LIST: { value: string; label: string; comingSoon: boolean }[] = [
+const ADAPTER_DISPLAY_LIST: {
+  value: string;
+  label: string;
+  comingSoon: boolean;
+}[] = [
   ...AGENT_ADAPTER_TYPES.map((t) => ({
     value: t,
     label: adapterLabels[t] ?? t,
@@ -920,13 +1142,18 @@ function AdapterTypeDropdown({
       <PopoverTrigger asChild>
         <button className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-sm hover:bg-accent/50 transition-colors w-full justify-between">
           <span className="inline-flex items-center gap-1.5">
-            {value === "opencode_local" ? <OpenCodeLogoIcon className="h-3.5 w-3.5" /> : null}
+            {value === "opencode_local" ? (
+              <OpenCodeLogoIcon className="h-3.5 w-3.5" />
+            ) : null}
             <span>{adapterLabels[value] ?? value}</span>
           </span>
           <ChevronDown className="h-3 w-3 text-muted-foreground" />
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-1" align="start">
+      <PopoverContent
+        className="w-[var(--radix-popover-trigger-width)] p-1"
+        align="start"
+      >
         {ADAPTER_DISPLAY_LIST.map((item) => (
           <button
             key={item.value}
@@ -936,18 +1163,22 @@ function AdapterTypeDropdown({
               item.comingSoon
                 ? "opacity-40 cursor-not-allowed"
                 : "hover:bg-accent/50",
-              item.value === value && !item.comingSoon && "bg-accent",
+              item.value === value && !item.comingSoon && "bg-accent"
             )}
             onClick={() => {
               if (!item.comingSoon) onChange(item.value);
             }}
           >
             <span className="inline-flex items-center gap-1.5">
-              {item.value === "opencode_local" ? <OpenCodeLogoIcon className="h-3.5 w-3.5" /> : null}
+              {item.value === "opencode_local" ? (
+                <OpenCodeLogoIcon className="h-3.5 w-3.5" />
+              ) : null}
               <span>{item.label}</span>
             </span>
             {item.comingSoon && (
-              <span className="text-[10px] text-muted-foreground">Coming soon</span>
+              <span className="text-[10px] text-muted-foreground">
+                Coming soon
+              </span>
             )}
           </button>
         ))}
@@ -998,7 +1229,8 @@ function EnvVarEditor({
           key: k,
           source: "secret" as const,
           plainValue: "",
-          secretId: typeof recBinding.secretId === "string" ? recBinding.secretId : "",
+          secretId:
+            typeof recBinding.secretId === "string" ? recBinding.secretId : "",
         };
       }
       if (
@@ -1011,7 +1243,8 @@ function EnvVarEditor({
         return {
           key: k,
           source: "plain" as const,
-          plainValue: typeof recBinding.value === "string" ? recBinding.value : "",
+          plainValue:
+            typeof recBinding.value === "string" ? recBinding.value : "",
           secretId: "",
         };
       }
@@ -1022,7 +1255,10 @@ function EnvVarEditor({
         secretId: "",
       };
     });
-    return [...entries, { key: "", source: "plain", plainValue: "", secretId: "" }];
+    return [
+      ...entries,
+      { key: "", source: "plain", plainValue: "", secretId: "" },
+    ];
   }
 
   const [rows, setRows] = useState<Row[]>(() => toRows(value));
@@ -1044,7 +1280,11 @@ function EnvVarEditor({
       if (!k) continue;
       if (row.source === "secret") {
         if (!row.secretId) continue;
-        rec[k] = { type: "secret_ref", secretId: row.secretId, version: "latest" };
+        rec[k] = {
+          type: "secret_ref",
+          secretId: row.secretId,
+          version: "latest",
+        };
       } else {
         rec[k] = { type: "plain", value: row.plainValue };
       }
@@ -1053,13 +1293,20 @@ function EnvVarEditor({
   }
 
   function updateRow(i: number, patch: Partial<Row>) {
-    const withPatch = rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r));
+    const withPatch = rows.map((r, idx) =>
+      idx === i ? { ...r, ...patch } : r
+    );
     if (
       withPatch[withPatch.length - 1].key ||
       withPatch[withPatch.length - 1].plainValue ||
       withPatch[withPatch.length - 1].secretId
     ) {
-      withPatch.push({ key: "", source: "plain", plainValue: "", secretId: "" });
+      withPatch.push({
+        key: "",
+        source: "plain",
+        plainValue: "",
+        secretId: "",
+      });
     }
     setRows(withPatch);
     emit(withPatch);
@@ -1107,7 +1354,9 @@ function EnvVarEditor({
         secretId: created.id,
       });
     } catch (err) {
-      setSealError(err instanceof Error ? err.message : "Failed to create secret");
+      setSealError(
+        err instanceof Error ? err.message : "Failed to create secret"
+      );
     }
   }
 
@@ -1115,10 +1364,7 @@ function EnvVarEditor({
     <div className="space-y-1.5">
       {rows.map((row, i) => {
         const isTrailing =
-          i === rows.length - 1 &&
-          !row.key &&
-          !row.plainValue &&
-          !row.secretId;
+          i === rows.length - 1 && !row.key && !row.plainValue && !row.secretId;
         return (
           <div key={i} className="flex items-center gap-1.5">
             <input
@@ -1276,12 +1522,20 @@ function ModelDropdown({
             <span className={cn(!value && "text-muted-foreground")}>
               {selected
                 ? selected.label
-                : value || (allowDefault ? "Default" : required ? "Select model (required)" : "Select model")}
+                : value ||
+                  (allowDefault
+                    ? "Default"
+                    : required
+                      ? "Select model (required)"
+                      : "Select model")}
             </span>
             <ChevronDown className="h-3 w-3 text-muted-foreground" />
           </button>
         </PopoverTrigger>
-        <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-1" align="start">
+        <PopoverContent
+          className="w-[var(--radix-popover-trigger-width)] p-1"
+          align="start"
+        >
           <input
             className="w-full px-2 py-1.5 text-xs bg-transparent outline-none border-b border-border mb-1 placeholder:text-muted-foreground/50"
             placeholder="Search models..."
@@ -1294,7 +1548,7 @@ function ModelDropdown({
               <button
                 className={cn(
                   "flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded hover:bg-accent/50",
-                  !value && "bg-accent",
+                  !value && "bg-accent"
                 )}
                 onClick={() => {
                   onChange("");
@@ -1316,14 +1570,17 @@ function ModelDropdown({
                     key={m.id}
                     className={cn(
                       "flex items-center w-full px-2 py-1.5 text-sm rounded hover:bg-accent/50",
-                      m.id === value && "bg-accent",
+                      m.id === value && "bg-accent"
                     )}
                     onClick={() => {
                       onChange(m.id);
                       onOpenChange(false);
                     }}
                   >
-                    <span className="block w-full text-left truncate" title={m.id}>
+                    <span
+                      className="block w-full text-left truncate"
+                      title={m.id}
+                    >
                       {groupByProvider ? extractModelName(m.id) : m.label}
                     </span>
                   </button>
@@ -1331,7 +1588,9 @@ function ModelDropdown({
               </div>
             ))}
             {filteredModels.length === 0 && (
-              <p className="px-2 py-1.5 text-xs text-muted-foreground">No models found.</p>
+              <p className="px-2 py-1.5 text-xs text-muted-foreground">
+                No models found.
+              </p>
             )}
           </div>
         </PopoverContent>
@@ -1360,17 +1619,22 @@ function ThinkingEffortDropdown({
       <Popover open={open} onOpenChange={onOpenChange}>
         <PopoverTrigger asChild>
           <button className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-sm hover:bg-accent/50 transition-colors w-full justify-between">
-            <span className={cn(!value && "text-muted-foreground")}>{selected?.label ?? "Auto"}</span>
+            <span className={cn(!value && "text-muted-foreground")}>
+              {selected?.label ?? "Auto"}
+            </span>
             <ChevronDown className="h-3 w-3 text-muted-foreground" />
           </button>
         </PopoverTrigger>
-        <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-1" align="start">
+        <PopoverContent
+          className="w-[var(--radix-popover-trigger-width)] p-1"
+          align="start"
+        >
           {options.map((option) => (
             <button
               key={option.id || "auto"}
               className={cn(
                 "flex items-center justify-between w-full px-2 py-1.5 text-sm rounded hover:bg-accent/50",
-                option.id === value && "bg-accent",
+                option.id === value && "bg-accent"
               )}
               onClick={() => {
                 onChange(option.id);
@@ -1378,7 +1642,11 @@ function ThinkingEffortDropdown({
               }}
             >
               <span>{option.label}</span>
-              {option.id ? <span className="text-xs text-muted-foreground font-mono">{option.id}</span> : null}
+              {option.id ? (
+                <span className="text-xs text-muted-foreground font-mono">
+                  {option.id}
+                </span>
+              ) : null}
             </button>
           ))}
         </PopoverContent>

@@ -1,58 +1,64 @@
-import { useEffect, useState, useRef, useCallback, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  DEFAULT_CODEX_LOCAL_BYPASS_APPROVALS_AND_SANDBOX,
+  DEFAULT_CODEX_LOCAL_MODEL,
+} from "@paperclipai/adapter-codex-local";
+import { DEFAULT_CURSOR_LOCAL_MODEL } from "@paperclipai/adapter-cursor-local";
+import { DEFAULT_GEMINI_LOCAL_MODEL } from "@paperclipai/adapter-gemini-local";
 import type { AdapterEnvironmentTestResult } from "@paperclipai/shared";
-import { useDialog } from "../context/DialogContext";
-import { useCompany } from "../context/CompanyContext";
-import { companiesApi } from "../api/companies";
-import { goalsApi } from "../api/goals";
-import { agentsApi } from "../api/agents";
-import { issuesApi } from "../api/issues";
-import { healthApi } from "../api/health";
-import { queryKeys } from "../lib/queryKeys";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Bot,
+  Building2,
+  Check,
+  ChevronDown,
+  Code,
+  FolderOpen,
+  Gem,
+  ListTodo,
+  Loader2,
+  MousePointer2,
+  Rocket,
+  Sparkles,
+  Terminal,
+  X,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/button";
 import { Dialog, DialogPortal } from "@/components/ui/dialog";
 import {
   Popover,
   PopoverContent,
-  PopoverTrigger
+  PopoverTrigger,
 } from "@/components/ui/popover";
-import { Button } from "@/components/ui/button";
-import { cn } from "../lib/utils";
-import { extractModelName, extractProviderIdWithFallback } from "../lib/model-utils";
 import { getUIAdapter } from "../adapters";
-import { defaultCreateValues } from "./agent-config-defaults";
-import { getOnboardingDefaultCommand } from "../lib/onboarding-defaults";
+import { agentsApi } from "../api/agents";
+import { companiesApi } from "../api/companies";
+import { goalsApi } from "../api/goals";
+import { healthApi } from "../api/health";
+import { issuesApi } from "../api/issues";
+import { useCompany } from "../context/CompanyContext";
+import { useDialog } from "../context/DialogContext";
 import {
-  DEFAULT_CODEX_LOCAL_BYPASS_APPROVALS_AND_SANDBOX,
-  DEFAULT_CODEX_LOCAL_MODEL
-} from "@paperclipai/adapter-codex-local";
-import { DEFAULT_CURSOR_LOCAL_MODEL } from "@paperclipai/adapter-cursor-local";
+  extractModelName,
+  extractProviderIdWithFallback,
+} from "../lib/model-utils";
+import { getOnboardingDefaultCommand } from "../lib/onboarding-defaults";
+import { queryKeys } from "../lib/queryKeys";
+import { cn } from "../lib/utils";
 import { AsciiArtAnimation } from "./AsciiArtAnimation";
-import { ChoosePathButton } from "./PathInstructionsModal";
+import { defaultCreateValues } from "./agent-config-defaults";
 import { HintIcon } from "./agent-config-primitives";
 import { OpenCodeLogoIcon } from "./OpenCodeLogoIcon";
-import {
-  Building2,
-  Bot,
-  Code,
-  ListTodo,
-  Rocket,
-  ArrowLeft,
-  ArrowRight,
-  Terminal,
-  Sparkles,
-  MousePointer2,
-  Check,
-  Loader2,
-  FolderOpen,
-  ChevronDown,
-  X
-} from "lucide-react";
+import { ChoosePathButton } from "./PathInstructionsModal";
 
 type Step = 1 | 2 | 3 | 4;
 type AdapterType =
   | "claude_local"
   | "codex_local"
+  | "gemini_local"
   | "opencode_local"
   | "pi_local"
   | "cursor"
@@ -143,7 +149,7 @@ export function OnboardingWizard() {
   }, [
     onboardingOpen,
     onboardingOptions.companyId,
-    onboardingOptions.initialStep
+    onboardingOptions.initialStep,
   ]);
 
   // Backfill issue prefix for an existing company once companies are loaded.
@@ -158,9 +164,7 @@ export function OnboardingWizard() {
     if (step === 3) autoResizeTextarea();
   }, [step, taskDescription, autoResizeTextarea]);
 
-  const {
-    data: health,
-  } = useQuery({
+  const { data: health } = useQuery({
     queryKey: queryKeys.health,
     queryFn: () => healthApi.get(),
     enabled: onboardingOpen,
@@ -174,31 +178,39 @@ export function OnboardingWizard() {
     isLoading: adapterModelsLoading,
     isFetching: adapterModelsFetching,
   } = useQuery({
-    queryKey:
-      createdCompanyId
-        ? queryKeys.agents.adapterModels(createdCompanyId, adapterType)
-        : ["agents", "none", "adapter-models", adapterType],
+    queryKey: createdCompanyId
+      ? queryKeys.agents.adapterModels(createdCompanyId, adapterType)
+      : ["agents", "none", "adapter-models", adapterType],
     queryFn: () => agentsApi.adapterModels(createdCompanyId!, adapterType),
-    enabled: Boolean(createdCompanyId) && onboardingOpen && step === 2
+    enabled: Boolean(createdCompanyId) && onboardingOpen && step === 2,
   });
   const isLocalAdapter =
-    adapterType === "claude_local" || adapterType === "codex_local" || adapterType === "opencode_local" || adapterType === "cursor";
+    adapterType === "claude_local" ||
+    adapterType === "codex_local" ||
+    adapterType === "gemini_local" ||
+    adapterType === "opencode_local" ||
+    adapterType === "cursor";
   const onboardingDefaults = health?.onboardingDefaults ?? null;
   const effectiveAdapterCommand =
-    command.trim() || getOnboardingDefaultCommand(adapterType, onboardingDefaults);
+    command.trim() ||
+    getOnboardingDefaultCommand(adapterType, onboardingDefaults);
 
   useEffect(() => {
     const previousAdapterType = previousAdapterTypeRef.current;
-    const nextDefaultCommand = getOnboardingDefaultCommand(adapterType, onboardingDefaults);
+    const nextDefaultCommand = getOnboardingDefaultCommand(
+      adapterType,
+      onboardingDefaults
+    );
 
     if (previousAdapterType !== adapterType) {
       const previousDefaultCommand = getOnboardingDefaultCommand(
         previousAdapterType,
-        onboardingDefaults,
+        onboardingDefaults
       );
       setCommand((current) => {
         const trimmed = current.trim();
-        if (!trimmed || trimmed === previousDefaultCommand) return nextDefaultCommand;
+        if (!trimmed || trimmed === previousDefaultCommand)
+          return nextDefaultCommand;
         return current;
       });
       previousAdapterTypeRef.current = adapterType;
@@ -208,7 +220,11 @@ export function OnboardingWizard() {
     setCommand((current) => {
       const trimmed = current.trim();
       if (!trimmed) return nextDefaultCommand;
-      if (adapterType === "claude_local" && trimmed === "claude" && nextDefaultCommand !== "claude") {
+      if (
+        adapterType === "claude_local" &&
+        trimmed === "claude" &&
+        nextDefaultCommand !== "claude"
+      ) {
         return nextDefaultCommand;
       }
       return current;
@@ -310,9 +326,11 @@ export function OnboardingWizard() {
       model:
         adapterType === "codex_local"
           ? model || DEFAULT_CODEX_LOCAL_MODEL
-          : adapterType === "cursor"
-            ? model || DEFAULT_CURSOR_LOCAL_MODEL
-          : model,
+          : adapterType === "gemini_local"
+            ? model || DEFAULT_GEMINI_LOCAL_MODEL
+            : adapterType === "cursor"
+              ? model || DEFAULT_CURSOR_LOCAL_MODEL
+              : model,
       command,
       args,
       url,
@@ -322,7 +340,7 @@ export function OnboardingWizard() {
       dangerouslyBypassSandbox:
         adapterType === "codex_local"
           ? DEFAULT_CODEX_LOCAL_BYPASS_APPROVALS_AND_SANDBOX
-          : defaultCreateValues.dangerouslyBypassSandbox
+          : defaultCreateValues.dangerouslyBypassSandbox,
     });
     if (adapterType === "claude_local" && forceUnsetAnthropicApiKey) {
       const env =
@@ -353,7 +371,7 @@ export function OnboardingWizard() {
         createdCompanyId,
         adapterType,
         {
-          adapterConfig: adapterConfigOverride ?? buildAdapterConfig()
+          adapterConfig: adapterConfigOverride ?? buildAdapterConfig(),
         }
       );
       setAdapterEnvResult(result);
@@ -382,10 +400,10 @@ export function OnboardingWizard() {
         await goalsApi.create(company.id, {
           title: companyGoal.trim(),
           level: "company",
-          status: "active"
+          status: "active",
         });
         queryClient.invalidateQueries({
-          queryKey: queryKeys.goals.list(company.id)
+          queryKey: queryKeys.goals.list(company.id),
         });
       }
 
@@ -416,19 +434,23 @@ export function OnboardingWizard() {
       if (adapterType === "opencode_local") {
         const selectedModelId = model.trim();
         if (!selectedModelId) {
-          setError("OpenCode requires an explicit model in provider/model format.");
+          setError(
+            "OpenCode requires an explicit model in provider/model format."
+          );
           return;
         }
         if (adapterModelsError) {
           setError(
             adapterModelsError instanceof Error
               ? adapterModelsError.message
-              : "Failed to load OpenCode models.",
+              : "Failed to load OpenCode models."
           );
           return;
         }
         if (adapterModelsLoading || adapterModelsFetching) {
-          setError("OpenCode models are still loading. Please wait and try again.");
+          setError(
+            "OpenCode models are still loading. Please wait and try again."
+          );
           return;
         }
         const discoveredModels = adapterModels ?? [];
@@ -436,7 +458,7 @@ export function OnboardingWizard() {
           setError(
             discoveredModels.length === 0
               ? "No OpenCode models discovered. Run `opencode models` and authenticate providers."
-              : `Configured OpenCode model is unavailable: ${selectedModelId}`,
+              : `Configured OpenCode model is unavailable: ${selectedModelId}`
           );
           return;
         }
@@ -458,13 +480,13 @@ export function OnboardingWizard() {
             intervalSec: 3600,
             wakeOnDemand: true,
             cooldownSec: 10,
-            maxConcurrentRuns: 1
-          }
-        }
+            maxConcurrentRuns: 1,
+          },
+        },
       });
       setCreatedAgentId(agent.id);
       queryClient.invalidateQueries({
-        queryKey: queryKeys.agents.list(createdCompanyId)
+        queryKey: queryKeys.agents.list(createdCompanyId),
       });
       setStep(3);
     } catch (err) {
@@ -502,7 +524,7 @@ export function OnboardingWizard() {
           createdCompanyId
         );
         queryClient.invalidateQueries({
-          queryKey: queryKeys.agents.list(createdCompanyId)
+          queryKey: queryKeys.agents.list(createdCompanyId),
         });
       }
 
@@ -534,11 +556,11 @@ export function OnboardingWizard() {
           ? { description: taskDescription.trim() }
           : {}),
         assigneeAgentId: createdAgentId,
-        status: "todo"
+        status: "todo",
       });
       setCreatedIssueRef(issue.identifier ?? issue.id);
       queryClient.invalidateQueries({
-        queryKey: queryKeys.issues.list(createdCompanyId)
+        queryKey: queryKeys.issues.list(createdCompanyId),
       });
       setStep(4);
     } catch (err) {
@@ -701,53 +723,61 @@ export function OnboardingWizard() {
                           label: "Claude Code",
                           icon: Sparkles,
                           desc: "Local Claude agent",
-                          recommended: true
+                          recommended: true,
                         },
                         {
                           value: "codex_local" as const,
                           label: "Codex",
                           icon: Code,
                           desc: "Local Codex agent",
-                          recommended: true
+                          recommended: true,
+                        },
+                        {
+                          value: "gemini_local" as const,
+                          label: "Gemini CLI",
+                          icon: Gem,
+                          desc: "Local Gemini agent",
                         },
                         {
                           value: "opencode_local" as const,
                           label: "OpenCode",
                           icon: OpenCodeLogoIcon,
-                          desc: "Local multi-provider agent"
+                          desc: "Local multi-provider agent",
                         },
                         {
                           value: "pi_local" as const,
                           label: "Pi",
                           icon: Terminal,
-                          desc: "Local Pi agent"
+                          desc: "Local Pi agent",
                         },
                         {
                           value: "openclaw_gateway" as const,
                           label: "OpenClaw Gateway",
                           icon: Bot,
-                          desc: "Invoke OpenClaw via gateway protocol"
+                          desc: "Invoke OpenClaw via gateway protocol",
                         },
                         {
                           value: "cursor" as const,
                           label: "Cursor",
                           icon: MousePointer2,
-                          desc: "Local Cursor agent"
-                        }
+                          desc: "Local Cursor agent",
+                        },
                       ].map((opt) => (
                         <button
                           key={opt.value}
                           className={cn(
                             "flex flex-col items-center gap-1.5 rounded-md border p-3 text-xs transition-colors relative",
                             adapterType === opt.value
-                                ? "border-foreground bg-accent"
-                                : "border-border hover:bg-accent/50"
+                              ? "border-foreground bg-accent"
+                              : "border-border hover:bg-accent/50"
                           )}
                           onClick={() => {
                             const nextType = opt.value as AdapterType;
                             setAdapterType(nextType);
                             if (nextType === "codex_local" && !model) {
                               setModel(DEFAULT_CODEX_LOCAL_MODEL);
+                            } else if (nextType === "gemini_local" && !model) {
+                              setModel(DEFAULT_GEMINI_LOCAL_MODEL);
                             } else if (nextType === "cursor" && !model) {
                               setModel(DEFAULT_CURSOR_LOCAL_MODEL);
                             }
@@ -778,6 +808,7 @@ export function OnboardingWizard() {
                   {/* Conditional adapter fields */}
                   {(adapterType === "claude_local" ||
                     adapterType === "codex_local" ||
+                    adapterType === "gemini_local" ||
                     adapterType === "opencode_local" ||
                     adapterType === "pi_local" ||
                     adapterType === "cursor") && (
@@ -850,12 +881,15 @@ export function OnboardingWizard() {
                                   setModelOpen(false);
                                 }}
                               >
-                                  Default
-                                </button>
+                                Default
+                              </button>
                             )}
                             <div className="max-h-[240px] overflow-y-auto">
                               {groupedModels.map((group) => (
-                                <div key={group.provider} className="mb-1 last:mb-0">
+                                <div
+                                  key={group.provider}
+                                  className="mb-1 last:mb-0"
+                                >
                                   {adapterType === "opencode_local" && (
                                     <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">
                                       {group.provider} ({group.entries.length})
@@ -873,8 +907,13 @@ export function OnboardingWizard() {
                                         setModelOpen(false);
                                       }}
                                     >
-                                      <span className="block w-full text-left truncate" title={m.id}>
-                                        {adapterType === "opencode_local" ? extractModelName(m.id) : m.label}
+                                      <span
+                                        className="block w-full text-left truncate"
+                                        title={m.id}
+                                      >
+                                        {adapterType === "opencode_local"
+                                          ? extractModelName(m.id)
+                                          : m.label}
                                       </span>
                                     </button>
                                   ))}
@@ -928,17 +967,23 @@ export function OnboardingWizard() {
                       {shouldSuggestUnsetAnthropicApiKey && (
                         <div className="rounded-md border border-amber-300/60 bg-amber-50/40 px-2.5 py-2 space-y-2">
                           <p className="text-[11px] text-amber-900/90 leading-relaxed">
-                            Claude failed while <span className="font-mono">ANTHROPIC_API_KEY</span> is set.
-                            You can clear it in this CEO adapter config and retry the probe.
+                            Claude failed while{" "}
+                            <span className="font-mono">ANTHROPIC_API_KEY</span>{" "}
+                            is set. You can clear it in this CEO adapter config
+                            and retry the probe.
                           </p>
                           <Button
                             size="sm"
                             variant="outline"
                             className="h-7 px-2.5 text-xs"
-                            disabled={adapterEnvLoading || unsetAnthropicLoading}
+                            disabled={
+                              adapterEnvLoading || unsetAnthropicLoading
+                            }
                             onClick={() => void handleUnsetAnthropicApiKey()}
                           >
-                            {unsetAnthropicLoading ? "Retrying..." : "Unset ANTHROPIC_API_KEY"}
+                            {unsetAnthropicLoading
+                              ? "Retrying..."
+                              : "Unset ANTHROPIC_API_KEY"}
                           </Button>
                         </div>
                       )}
@@ -947,32 +992,43 @@ export function OnboardingWizard() {
                         <p className="font-medium">Manual debug</p>
                         <p className="text-muted-foreground font-mono break-all">
                           {adapterType === "cursor"
-                            ? `${effectiveAdapterCommand} -p --mode ask --output-format json \"Respond with hello.\"`
+                            ? `${effectiveAdapterCommand} -p --mode ask --output-format json "Respond with hello."`
                             : adapterType === "codex_local"
-                            ? `${effectiveAdapterCommand} exec --json -`
-                            : adapterType === "opencode_local"
-                              ? `${effectiveAdapterCommand} run --format json "Respond with hello."`
-                            : `${effectiveAdapterCommand} --print - --output-format stream-json --verbose`}
+                              ? `${effectiveAdapterCommand} exec --json -`
+                              : adapterType === "gemini_local"
+                                ? `${effectiveAdapterCommand} --output-format json "Respond with hello."`
+                                : adapterType === "opencode_local"
+                                  ? `${effectiveAdapterCommand} run --format json "Respond with hello."`
+                                  : `${effectiveAdapterCommand} --print - --output-format stream-json --verbose`}
                         </p>
                         <p className="text-muted-foreground">
                           Prompt:{" "}
                           <span className="font-mono">Respond with hello.</span>
                         </p>
-                        {adapterType === "cursor" || adapterType === "codex_local" || adapterType === "opencode_local" ? (
+                        {adapterType === "cursor" ||
+                        adapterType === "codex_local" ||
+                        adapterType === "gemini_local" ||
+                        adapterType === "opencode_local" ? (
                           <p className="text-muted-foreground">
                             If auth fails, set{" "}
                             <span className="font-mono">
-                              {adapterType === "cursor" ? "CURSOR_API_KEY" : "OPENAI_API_KEY"}
+                              {adapterType === "cursor"
+                                ? "CURSOR_API_KEY"
+                                : adapterType === "gemini_local"
+                                  ? "GEMINI_API_KEY"
+                                  : "OPENAI_API_KEY"}
                             </span>{" "}
-                            in
-                            env or run{" "}
+                            in env or run{" "}
                             <span className="font-mono">
                               {adapterType === "cursor"
                                 ? "agent login"
                                 : adapterType === "codex_local"
                                   ? "codex login"
-                                  : "opencode auth login"}
-                            </span>.
+                                  : adapterType === "gemini_local"
+                                    ? "gemini auth"
+                                    : "opencode auth login"}
+                            </span>
+                            .
                           </p>
                         ) : (
                           <p className="text-muted-foreground">
@@ -1012,15 +1068,22 @@ export function OnboardingWizard() {
                     </div>
                   )}
 
-                  {(adapterType === "http" || adapterType === "openclaw_gateway") && (
+                  {(adapterType === "http" ||
+                    adapterType === "openclaw_gateway") && (
                     <div className="space-y-3">
                       <div>
                         <label className="text-xs text-muted-foreground mb-1 block">
-                          {adapterType === "openclaw_gateway" ? "Gateway URL" : "Webhook URL"}
+                          {adapterType === "openclaw_gateway"
+                            ? "Gateway URL"
+                            : "Webhook URL"}
                         </label>
                         <input
                           className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm font-mono outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
-                          placeholder={adapterType === "openclaw_gateway" ? "ws://127.0.0.1:18789" : "https://..."}
+                          placeholder={
+                            adapterType === "openclaw_gateway"
+                              ? "ws://127.0.0.1:18789"
+                              : "https://..."
+                          }
                           value={url}
                           onChange={(e) => setUrl(e.target.value)}
                         />
@@ -1035,7 +1098,9 @@ export function OnboardingWizard() {
                               className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm font-mono outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
                               placeholder="x-openclaw-token"
                               value={gatewayAuthToken}
-                              onChange={(e) => setGatewayAuthToken(e.target.value)}
+                              onChange={(e) =>
+                                setGatewayAuthToken(e.target.value)
+                              }
                             />
                           </div>
                           <div>
@@ -1046,7 +1111,9 @@ export function OnboardingWizard() {
                               className="w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm font-mono outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50"
                               placeholder="http://host.docker.internal:3100"
                               value={paperclipApiUrl}
-                              onChange={(e) => setPaperclipApiUrl(e.target.value)}
+                              onChange={(e) =>
+                                setPaperclipApiUrl(e.target.value)
+                              }
                             />
                           </div>
                         </>
@@ -1241,7 +1308,7 @@ export function OnboardingWizard() {
 }
 
 function AdapterEnvironmentResult({
-  result
+  result,
 }: {
   result: AdapterEnvironmentTestResult;
 }) {

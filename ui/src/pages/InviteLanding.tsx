@@ -1,13 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import type { AgentAdapterType, JoinRequest } from "@paperclipai/shared";
+import { AGENT_ADAPTER_TYPES } from "@paperclipai/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
+import { Button } from "@/components/ui/button";
 import { Link, useParams } from "@/lib/router";
 import { accessApi } from "../api/access";
 import { authApi } from "../api/auth";
 import { healthApi } from "../api/health";
 import { queryKeys } from "../lib/queryKeys";
-import { Button } from "@/components/ui/button";
-import { AGENT_ADAPTER_TYPES } from "@paperclipai/shared";
-import type { AgentAdapterType, JoinRequest } from "@paperclipai/shared";
 
 type JoinType = "human" | "agent";
 const joinAdapterOptions: AgentAdapterType[] = [...AGENT_ADAPTER_TYPES];
@@ -15,6 +15,7 @@ const joinAdapterOptions: AgentAdapterType[] = [...AGENT_ADAPTER_TYPES];
 const adapterLabels: Record<string, string> = {
   claude_local: "Claude (local)",
   codex_local: "Codex (local)",
+  gemini_local: "Gemini CLI (local)",
   opencode_local: "OpenCode (local)",
   openclaw_gateway: "OpenClaw Gateway",
   cursor: "Cursor (local)",
@@ -25,6 +26,7 @@ const adapterLabels: Record<string, string> = {
 const ENABLED_INVITE_ADAPTERS = new Set([
   "claude_local",
   "codex_local",
+  "gemini_local",
   "opencode_local",
   "cursor",
   "openclaw_gateway",
@@ -40,7 +42,9 @@ function readNestedString(value: unknown, path: string[]): string | null {
     if (!current || typeof current !== "object") return null;
     current = (current as Record<string, unknown>)[segment];
   }
-  return typeof current === "string" && current.trim().length > 0 ? current : null;
+  return typeof current === "string" && current.trim().length > 0
+    ? current
+    : null;
 }
 
 export function InviteLandingPage() {
@@ -49,12 +53,16 @@ export function InviteLandingPage() {
   const token = (params.token ?? "").trim();
   const [joinType, setJoinType] = useState<JoinType>("human");
   const [agentName, setAgentName] = useState("");
-  const [adapterType, setAdapterType] = useState<AgentAdapterType>("claude_local");
+  const [adapterType, setAdapterType] =
+    useState<AgentAdapterType>("claude_local");
   const [capabilities, setCapabilities] = useState("");
   const [gatewayUrl, setGatewayUrl] = useState("");
   const [gatewayAuthToken, setGatewayAuthToken] = useState("");
   const [paperclipApiUrl, setPaperclipApiUrl] = useState("");
-  const [result, setResult] = useState<{ kind: "bootstrap" | "join"; payload: unknown } | null>(null);
+  const [result, setResult] = useState<{
+    kind: "bootstrap" | "join";
+    payload: unknown;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const healthQuery = useQuery({
@@ -124,9 +132,13 @@ export function InviteLandingPage() {
     onSuccess: async (payload) => {
       setError(null);
       await queryClient.invalidateQueries({ queryKey: queryKeys.auth.session });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.companies.all,
+      });
       const asBootstrap =
-        payload && typeof payload === "object" && "bootstrapAccepted" in (payload as Record<string, unknown>);
+        payload &&
+        typeof payload === "object" &&
+        "bootstrapAccepted" in (payload as Record<string, unknown>);
       setResult({ kind: asBootstrap ? "bootstrap" : "join", payload });
     },
     onError: (err) => {
@@ -135,11 +147,23 @@ export function InviteLandingPage() {
   });
 
   if (!token) {
-    return <div className="mx-auto max-w-xl py-10 text-sm text-destructive">Invalid invite token.</div>;
+    return (
+      <div className="mx-auto max-w-xl py-10 text-sm text-destructive">
+        Invalid invite token.
+      </div>
+    );
   }
 
-  if (inviteQuery.isLoading || healthQuery.isLoading || sessionQuery.isLoading) {
-    return <div className="mx-auto max-w-xl py-10 text-sm text-muted-foreground">Loading invite...</div>;
+  if (
+    inviteQuery.isLoading ||
+    healthQuery.isLoading ||
+    sessionQuery.isLoading
+  ) {
+    return (
+      <div className="mx-auto max-w-xl py-10 text-sm text-muted-foreground">
+        Loading invite...
+      </div>
+    );
   }
 
   if (inviteQuery.error || !invite) {
@@ -161,7 +185,8 @@ export function InviteLandingPage() {
         <div className="rounded-lg border border-border bg-card p-6">
           <h1 className="text-lg font-semibold">Bootstrap complete</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            The first instance admin is now configured. You can continue to the board.
+            The first instance admin is now configured. You can continue to the
+            board.
           </p>
           <Button asChild className="mt-4">
             <Link to="/">Open board</Link>
@@ -183,55 +208,107 @@ export function InviteLandingPage() {
         hint?: string;
       }>;
     };
-    const claimSecret = typeof payload.claimSecret === "string" ? payload.claimSecret : null;
-    const claimApiKeyPath = typeof payload.claimApiKeyPath === "string" ? payload.claimApiKeyPath : null;
-    const onboardingSkillUrl = readNestedString(payload.onboarding, ["skill", "url"]);
-    const onboardingSkillPath = readNestedString(payload.onboarding, ["skill", "path"]);
-    const onboardingInstallPath = readNestedString(payload.onboarding, ["skill", "installPath"]);
-    const onboardingTextUrl = readNestedString(payload.onboarding, ["textInstructions", "url"]);
-    const onboardingTextPath = readNestedString(payload.onboarding, ["textInstructions", "path"]);
-    const diagnostics = Array.isArray(payload.diagnostics) ? payload.diagnostics : [];
+    const claimSecret =
+      typeof payload.claimSecret === "string" ? payload.claimSecret : null;
+    const claimApiKeyPath =
+      typeof payload.claimApiKeyPath === "string"
+        ? payload.claimApiKeyPath
+        : null;
+    const onboardingSkillUrl = readNestedString(payload.onboarding, [
+      "skill",
+      "url",
+    ]);
+    const onboardingSkillPath = readNestedString(payload.onboarding, [
+      "skill",
+      "path",
+    ]);
+    const onboardingInstallPath = readNestedString(payload.onboarding, [
+      "skill",
+      "installPath",
+    ]);
+    const onboardingTextUrl = readNestedString(payload.onboarding, [
+      "textInstructions",
+      "url",
+    ]);
+    const onboardingTextPath = readNestedString(payload.onboarding, [
+      "textInstructions",
+      "path",
+    ]);
+    const diagnostics = Array.isArray(payload.diagnostics)
+      ? payload.diagnostics
+      : [];
     return (
       <div className="mx-auto max-w-xl py-10">
         <div className="rounded-lg border border-border bg-card p-6">
           <h1 className="text-lg font-semibold">Join request submitted</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Your request is pending admin approval. You will not have access until approved.
+            Your request is pending admin approval. You will not have access
+            until approved.
           </p>
           <div className="mt-4 rounded-md border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
             Request ID: <span className="font-mono">{payload.id}</span>
           </div>
           {claimSecret && claimApiKeyPath && (
             <div className="mt-3 space-y-1 rounded-md border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
-              <p className="font-medium text-foreground">One-time claim secret (save now)</p>
+              <p className="font-medium text-foreground">
+                One-time claim secret (save now)
+              </p>
               <p className="font-mono break-all">{claimSecret}</p>
               <p className="font-mono break-all">POST {claimApiKeyPath}</p>
             </div>
           )}
-          {(onboardingSkillUrl || onboardingSkillPath || onboardingInstallPath) && (
+          {(onboardingSkillUrl ||
+            onboardingSkillPath ||
+            onboardingInstallPath) && (
             <div className="mt-3 space-y-1 rounded-md border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
-              <p className="font-medium text-foreground">Paperclip skill bootstrap</p>
-              {onboardingSkillUrl && <p className="font-mono break-all">GET {onboardingSkillUrl}</p>}
-              {!onboardingSkillUrl && onboardingSkillPath && <p className="font-mono break-all">GET {onboardingSkillPath}</p>}
-              {onboardingInstallPath && <p className="font-mono break-all">Install to {onboardingInstallPath}</p>}
+              <p className="font-medium text-foreground">
+                Paperclip skill bootstrap
+              </p>
+              {onboardingSkillUrl && (
+                <p className="font-mono break-all">GET {onboardingSkillUrl}</p>
+              )}
+              {!onboardingSkillUrl && onboardingSkillPath && (
+                <p className="font-mono break-all">GET {onboardingSkillPath}</p>
+              )}
+              {onboardingInstallPath && (
+                <p className="font-mono break-all">
+                  Install to {onboardingInstallPath}
+                </p>
+              )}
             </div>
           )}
           {(onboardingTextUrl || onboardingTextPath) && (
             <div className="mt-3 space-y-1 rounded-md border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
-              <p className="font-medium text-foreground">Agent-readable onboarding text</p>
-              {onboardingTextUrl && <p className="font-mono break-all">GET {onboardingTextUrl}</p>}
-              {!onboardingTextUrl && onboardingTextPath && <p className="font-mono break-all">GET {onboardingTextPath}</p>}
+              <p className="font-medium text-foreground">
+                Agent-readable onboarding text
+              </p>
+              {onboardingTextUrl && (
+                <p className="font-mono break-all">GET {onboardingTextUrl}</p>
+              )}
+              {!onboardingTextUrl && onboardingTextPath && (
+                <p className="font-mono break-all">GET {onboardingTextPath}</p>
+              )}
             </div>
           )}
           {diagnostics.length > 0 && (
             <div className="mt-3 space-y-1 rounded-md border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
-              <p className="font-medium text-foreground">Connectivity diagnostics</p>
+              <p className="font-medium text-foreground">
+                Connectivity diagnostics
+              </p>
               {diagnostics.map((diag, idx) => (
                 <div key={`${diag.code}:${idx}`} className="space-y-0.5">
-                  <p className={diag.level === "warn" ? "text-amber-600 dark:text-amber-400" : undefined}>
+                  <p
+                    className={
+                      diag.level === "warn"
+                        ? "text-amber-600 dark:text-amber-400"
+                        : undefined
+                    }
+                  >
                     [{diag.level}] {diag.message}
                   </p>
-                  {diag.hint && <p className="font-mono break-all">{diag.hint}</p>}
+                  {diag.hint && (
+                    <p className="font-mono break-all">{diag.hint}</p>
+                  )}
                 </div>
               ))}
             </div>
@@ -245,9 +322,13 @@ export function InviteLandingPage() {
     <div className="mx-auto max-w-xl py-10">
       <div className="rounded-lg border border-border bg-card p-6">
         <h1 className="text-xl font-semibold">
-          {invite.inviteType === "bootstrap_ceo" ? "Bootstrap your Paperclip instance" : "Join this Paperclip company"}
+          {invite.inviteType === "bootstrap_ceo"
+            ? "Bootstrap your Paperclip instance"
+            : "Join this Paperclip company"}
         </h1>
-        <p className="mt-2 text-sm text-muted-foreground">Invite expires {dateTime(invite.expiresAt)}.</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Invite expires {dateTime(invite.expiresAt)}.
+        </p>
 
         {invite.inviteType !== "bootstrap_ceo" && (
           <div className="mt-5 flex gap-2">
@@ -271,7 +352,9 @@ export function InviteLandingPage() {
         {joinType === "agent" && invite.inviteType !== "bootstrap_ceo" && (
           <div className="mt-4 space-y-3">
             <label className="block text-sm">
-              <span className="mb-1 block text-muted-foreground">Agent name</span>
+              <span className="mb-1 block text-muted-foreground">
+                Agent name
+              </span>
               <input
                 className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
                 value={agentName}
@@ -279,21 +362,32 @@ export function InviteLandingPage() {
               />
             </label>
             <label className="block text-sm">
-              <span className="mb-1 block text-muted-foreground">Adapter type</span>
+              <span className="mb-1 block text-muted-foreground">
+                Adapter type
+              </span>
               <select
                 className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
                 value={adapterType}
-                onChange={(event) => setAdapterType(event.target.value as AgentAdapterType)}
+                onChange={(event) =>
+                  setAdapterType(event.target.value as AgentAdapterType)
+                }
               >
                 {joinAdapterOptions.map((type) => (
-                  <option key={type} value={type} disabled={!ENABLED_INVITE_ADAPTERS.has(type)}>
-                    {adapterLabels[type]}{!ENABLED_INVITE_ADAPTERS.has(type) ? " (Coming soon)" : ""}
+                  <option
+                    key={type}
+                    value={type}
+                    disabled={!ENABLED_INVITE_ADAPTERS.has(type)}
+                  >
+                    {adapterLabels[type]}
+                    {!ENABLED_INVITE_ADAPTERS.has(type) ? " (Coming soon)" : ""}
                   </option>
                 ))}
               </select>
             </label>
             <label className="block text-sm">
-              <span className="mb-1 block text-muted-foreground">Capabilities (optional)</span>
+              <span className="mb-1 block text-muted-foreground">
+                Capabilities (optional)
+              </span>
               <textarea
                 className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
                 rows={4}
@@ -304,7 +398,9 @@ export function InviteLandingPage() {
             {adapterType === "openclaw_gateway" && (
               <>
                 <label className="block text-sm">
-                  <span className="mb-1 block text-muted-foreground">Gateway URL</span>
+                  <span className="mb-1 block text-muted-foreground">
+                    Gateway URL
+                  </span>
                   <input
                     className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm font-mono"
                     placeholder="ws://127.0.0.1:18789"
@@ -313,16 +409,22 @@ export function InviteLandingPage() {
                   />
                 </label>
                 <label className="block text-sm">
-                  <span className="mb-1 block text-muted-foreground">Gateway auth token</span>
+                  <span className="mb-1 block text-muted-foreground">
+                    Gateway auth token
+                  </span>
                   <input
                     className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm font-mono"
                     placeholder="x-openclaw-token"
                     value={gatewayAuthToken}
-                    onChange={(event) => setGatewayAuthToken(event.target.value)}
+                    onChange={(event) =>
+                      setGatewayAuthToken(event.target.value)
+                    }
                   />
                 </label>
                 <label className="block text-sm">
-                  <span className="mb-1 block text-muted-foreground">Paperclip API URL (optional)</span>
+                  <span className="mb-1 block text-muted-foreground">
+                    Paperclip API URL (optional)
+                  </span>
                   <input
                     className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm font-mono"
                     placeholder="http://host.docker.internal:3100"
@@ -340,7 +442,11 @@ export function InviteLandingPage() {
             Sign in or create an account before submitting a human join request.
             <div className="mt-2">
               <Button asChild size="sm" variant="outline">
-                <Link to={`/auth?next=${encodeURIComponent(`/invite/${token}`)}`}>Sign in / Create account</Link>
+                <Link
+                  to={`/auth?next=${encodeURIComponent(`/invite/${token}`)}`}
+                >
+                  Sign in / Create account
+                </Link>
               </Button>
             </div>
           </div>
@@ -352,11 +458,14 @@ export function InviteLandingPage() {
           className="mt-5"
           disabled={
             acceptMutation.isPending ||
-            (joinType === "agent" && invite.inviteType !== "bootstrap_ceo" && agentName.trim().length === 0) ||
+            (joinType === "agent" &&
+              invite.inviteType !== "bootstrap_ceo" &&
+              agentName.trim().length === 0) ||
             (joinType === "agent" &&
               invite.inviteType !== "bootstrap_ceo" &&
               adapterType === "openclaw_gateway" &&
-              (gatewayUrl.trim().length === 0 || gatewayAuthToken.trim().length === 0)) ||
+              (gatewayUrl.trim().length === 0 ||
+                gatewayAuthToken.trim().length === 0)) ||
             requiresAuthForHuman
           }
           onClick={() => acceptMutation.mutate()}
