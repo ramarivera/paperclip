@@ -473,6 +473,7 @@ export async function startServer(): Promise<StartedServer> {
     bindHost: config.host,
     authReady,
     companyDeletionEnabled: config.companyDeletionEnabled,
+    onboardingCeoClaudeCommand: config.onboardingCeoClaudeCommand,
     betterAuthHandler,
     resolveSession,
   });

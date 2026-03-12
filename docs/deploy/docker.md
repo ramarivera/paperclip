@@ -67,3 +67,9 @@ docker run --name paperclip \
 ```
 
 Without API keys, the app runs normally — adapter environment checks will surface missing prerequisites.
+
+If your deployment needs new onboarding-created CEO agents to use a wrapper command instead of bare `claude`, pass:
+
+```sh
+-e PAPERCLIP_ONBOARDING_CEO_CLAUDE_COMMAND=paperclip-claude
+```

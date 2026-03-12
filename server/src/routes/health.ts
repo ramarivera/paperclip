@@ -11,6 +11,7 @@ export function healthRoutes(
     deploymentExposure: DeploymentExposure;
     authReady: boolean;
     companyDeletionEnabled: boolean;
+    onboardingCeoClaudeCommand?: string;
   } = {
     deploymentMode: "local_trusted",
     deploymentExposure: "private",
@@ -21,8 +22,17 @@ export function healthRoutes(
   const router = Router();
 
   router.get("/", async (_req, res) => {
+    const onboardingDefaults = opts.onboardingCeoClaudeCommand
+      ? {
+        ceoClaudeCommand: opts.onboardingCeoClaudeCommand,
+      }
+      : undefined;
+
     if (!db) {
-      res.json({ status: "ok" });
+      res.json({
+        status: "ok",
+        ...(onboardingDefaults ? { onboardingDefaults } : {}),
+      });
       return;
     }
 
@@ -61,6 +71,7 @@ export function healthRoutes(
       authReady: opts.authReady,
       bootstrapStatus,
       bootstrapInviteActive,
+      ...(onboardingDefaults ? { onboardingDefaults } : {}),
       features: {
         companyDeletionEnabled: opts.companyDeletionEnabled,
       },

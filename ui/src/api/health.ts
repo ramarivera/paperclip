@@ -5,6 +5,9 @@ export type HealthStatus = {
   authReady?: boolean;
   bootstrapStatus?: "ready" | "bootstrap_pending";
   bootstrapInviteActive?: boolean;
+  onboardingDefaults?: {
+    ceoClaudeCommand?: string;
+  };
   features?: {
     companyDeletionEnabled?: boolean;
   };

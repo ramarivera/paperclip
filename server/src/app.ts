@@ -41,6 +41,7 @@ export async function createApp(
     bindHost: string;
     authReady: boolean;
     companyDeletionEnabled: boolean;
+    onboardingCeoClaudeCommand?: string;
     betterAuthHandler?: express.RequestHandler;
     resolveSession?: (req: ExpressRequest) => Promise<BetterAuthSessionResult | null>;
   },
@@ -97,10 +98,11 @@ export async function createApp(
     "/health",
     healthRoutes(db, {
       deploymentMode: opts.deploymentMode,
-      deploymentExposure: opts.deploymentExposure,
-      authReady: opts.authReady,
-      companyDeletionEnabled: opts.companyDeletionEnabled,
-    }),
+        deploymentExposure: opts.deploymentExposure,
+        authReady: opts.authReady,
+        companyDeletionEnabled: opts.companyDeletionEnabled,
+        onboardingCeoClaudeCommand: opts.onboardingCeoClaudeCommand,
+      }),
   );
   api.use("/companies", companyRoutes(db));
   api.use(agentRoutes(db));

@@ -124,6 +124,16 @@ When a local agent run has no resolved project/session workspace, Paperclip fall
 
 This path honors `PAPERCLIP_HOME` and `PAPERCLIP_INSTANCE_ID` in non-default setups.
 
+## Onboarding CEO command default
+
+You can override the default Claude command used for the CEO agent in the first-run onboarding wizard with:
+
+```sh
+PAPERCLIP_ONBOARDING_CEO_CLAUDE_COMMAND=paperclip-claude
+```
+
+This is useful for deployments that need onboarding to create Claude agents against a wrapper command instead of bare `claude`.
+
 ## Worktree-local Instances
 
 When developing from multiple git worktrees, do not point two Paperclip servers at the same embedded PostgreSQL data directory.

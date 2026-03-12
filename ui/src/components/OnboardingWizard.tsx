@@ -8,6 +8,7 @@ import { companiesApi } from "../api/companies";
 import { goalsApi } from "../api/goals";
 import { agentsApi } from "../api/agents";
 import { issuesApi } from "../api/issues";
+import { healthApi } from "../api/health";
 import { queryKeys } from "../lib/queryKeys";
 import { Dialog, DialogPortal } from "@/components/ui/dialog";
 import {
@@ -20,6 +21,7 @@ import { cn } from "../lib/utils";
 import { extractModelName, extractProviderIdWithFallback } from "../lib/model-utils";
 import { getUIAdapter } from "../adapters";
 import { defaultCreateValues } from "./agent-config-defaults";
+import { getOnboardingDefaultCommand } from "../lib/onboarding-defaults";
 import {
   DEFAULT_CODEX_LOCAL_BYPASS_APPROVALS_AND_SANDBOX,
   DEFAULT_CODEX_LOCAL_MODEL
@@ -88,7 +90,9 @@ export function OnboardingWizard() {
   const [adapterType, setAdapterType] = useState<AdapterType>("claude_local");
   const [cwd, setCwd] = useState("");
   const [model, setModel] = useState("");
-  const [command, setCommand] = useState("");
+  const [command, setCommand] = useState(() =>
+    getOnboardingDefaultCommand("claude_local", null)
+  );
   const [args, setArgs] = useState("");
   const [url, setUrl] = useState("");
   const [gatewayAuthToken, setGatewayAuthToken] = useState("");
@@ -125,6 +129,7 @@ export function OnboardingWizard() {
   >(null);
   const [createdAgentId, setCreatedAgentId] = useState<string | null>(null);
   const [createdIssueRef, setCreatedIssueRef] = useState<string | null>(null);
+  const previousAdapterTypeRef = useRef<AdapterType>("claude_local");
 
   // Sync step and company when onboarding opens with options.
   // Keep this independent from company-list refreshes so Step 1 completion
@@ -154,6 +159,16 @@ export function OnboardingWizard() {
   }, [step, taskDescription, autoResizeTextarea]);
 
   const {
+    data: health,
+  } = useQuery({
+    queryKey: queryKeys.health,
+    queryFn: () => healthApi.get(),
+    enabled: onboardingOpen,
+    retry: false,
+    staleTime: 30000,
+  });
+
+  const {
     data: adapterModels,
     error: adapterModelsError,
     isLoading: adapterModelsLoading,
@@ -168,15 +183,37 @@ export function OnboardingWizard() {
   });
   const isLocalAdapter =
     adapterType === "claude_local" || adapterType === "codex_local" || adapterType === "opencode_local" || adapterType === "cursor";
+  const onboardingDefaults = health?.onboardingDefaults ?? null;
   const effectiveAdapterCommand =
-    command.trim() ||
-    (adapterType === "codex_local"
-      ? "codex"
-      : adapterType === "cursor"
-        ? "agent"
-        : adapterType === "opencode_local"
-          ? "opencode"
-          : "claude");
+    command.trim() || getOnboardingDefaultCommand(adapterType, onboardingDefaults);
+
+  useEffect(() => {
+    const previousAdapterType = previousAdapterTypeRef.current;
+    const nextDefaultCommand = getOnboardingDefaultCommand(adapterType, onboardingDefaults);
+
+    if (previousAdapterType !== adapterType) {
+      const previousDefaultCommand = getOnboardingDefaultCommand(
+        previousAdapterType,
+        onboardingDefaults,
+      );
+      setCommand((current) => {
+        const trimmed = current.trim();
+        if (!trimmed || trimmed === previousDefaultCommand) return nextDefaultCommand;
+        return current;
+      });
+      previousAdapterTypeRef.current = adapterType;
+      return;
+    }
+
+    setCommand((current) => {
+      const trimmed = current.trim();
+      if (!trimmed) return nextDefaultCommand;
+      if (adapterType === "claude_local" && trimmed === "claude" && nextDefaultCommand !== "claude") {
+        return nextDefaultCommand;
+      }
+      return current;
+    });
+  }, [adapterType, onboardingDefaults]);
 
   useEffect(() => {
     if (step !== 2) return;
@@ -240,7 +277,7 @@ export function OnboardingWizard() {
     setAdapterType("claude_local");
     setCwd("");
     setModel("");
-    setCommand("");
+    setCommand(getOnboardingDefaultCommand("claude_local", onboardingDefaults));
     setArgs("");
     setUrl("");
     setGatewayAuthToken("");
@@ -256,6 +293,7 @@ export function OnboardingWizard() {
     setCreatedCompanyPrefix(null);
     setCreatedAgentId(null);
     setCreatedIssueRef(null);
+    previousAdapterTypeRef.current = "claude_local";
   }
 
   function handleClose() {
