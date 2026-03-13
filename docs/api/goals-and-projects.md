@@ -38,10 +38,44 @@ POST /api/companies/{companyId}/goals
 ```
 PATCH /api/goals/{goalId}
 {
-  "status": "completed",
+  "status": "achieved",
   "description": "Updated description"
 }
 ```
+
+## Quick-start via HTTP
+
+Use these endpoints to seed initial goals in a fresh instance:
+
+1. List goals:
+
+```
+GET /api/companies/{companyId}/goals
+```
+
+2. Create goals:
+
+```
+POST /api/companies/{companyId}/goals
+{
+  "title": "{goal title}",
+  "description": "{optional description}",
+  "level": "company | team | agent | task",
+  "status": "planned | active | achieved | cancelled",
+  "parentId": "{optional parent goal uuid}",
+  "ownerAgentId": "{optional owner agent uuid}"
+}
+```
+
+## Trigger and watch goal-related work
+
+- Find agents in a company: `GET /api/companies/{companyId}/agents`
+- Manually trigger a heartbeat: `POST /api/agents/{agentId}/heartbeat/invoke`
+- List heartbeat runs: `GET /api/companies/{companyId}/heartbeat-runs`
+- Inspect a run: `GET /api/heartbeat-runs/{runId}`
+- Stream run events/logs:
+  - `GET /api/heartbeat-runs/{runId}/events`
+  - `GET /api/heartbeat-runs/{runId}/log`
 
 ## Projects
 
